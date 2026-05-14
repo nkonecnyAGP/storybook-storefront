@@ -64,6 +64,7 @@ export default function CreateBook() {
   const [ageRange, setAgeRange] = useState('')
   const [additionalDetails, setAdditionalDetails] = useState('')
   const [previewMode, setPreviewMode] = useState<'quick' | 'cover' | 'full'>('quick')
+  const [pageCount, setPageCount] = useState<number>(5)
   const [styleReferenceUrl, setStyleReferenceUrl] = useState<string>('')
   const [customStyleDescriptor, setCustomStyleDescriptor] = useState<string>('')
   const [styleUploading, setStyleUploading] = useState(false)
@@ -166,6 +167,7 @@ export default function CreateBook() {
           styleDescriptor: effectiveStyleDescriptor,
           styleReferenceUrl: styleReferenceUrl || undefined,
           previewMode,
+          pageCount,
         }),
       })
       if (!res.ok) {
@@ -451,6 +453,28 @@ export default function CreateBook() {
             />
 
             <div className="mt-6">
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 font-display mb-2">Page Count</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">How long should the story be? You can also add or remove pages later when revising.</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={3}
+                  max={15}
+                  value={pageCount}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPageCount(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-purple-500"
+                  aria-label="Page count"
+                />
+                <span className="text-lg font-bold text-purple-600 dark:text-purple-300 w-20 text-right">{pageCount} pages</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-1 px-1">
+                <span>3 (very short)</span>
+                <span>5 (default)</span>
+                <span>15 (long)</span>
+              </div>
+            </div>
+
+            <div className="mt-6">
               <h3 className="font-bold text-gray-800 dark:text-gray-100 font-display mb-2">Preview Mode</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Pick how much we render up front. You can always generate the rest later, per page.</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -474,9 +498,9 @@ export default function CreateBook() {
                   selected={previewMode === 'full'}
                   onClick={() => setPreviewMode('full')}
                   label="Full book"
-                  time="~2 min"
-                  cost="~$0.24"
-                  description="Story + cover + all 5 page illustrations."
+                  time={`~${Math.max(2, Math.ceil((pageCount + 1) * 20 / 60))} min`}
+                  cost={`~$${((pageCount + 1) * 0.04).toFixed(2)}`}
+                  description={`Story + cover + all ${pageCount} page illustrations.`}
                 />
               </div>
             </div>
@@ -488,6 +512,7 @@ export default function CreateBook() {
                 <p><span className="font-semibold">Art style:</span> {STYLE_PRESETS.find(s => s.value === stylePreset)?.label}</p>
                 <p><span className="font-semibold">Cast:</span> {cast.map(c => c.name).filter(Boolean).join(', ') || '(none yet)'}</p>
                 <p><span className="font-semibold">Ages:</span> {ageRange}</p>
+                <p><span className="font-semibold">Pages:</span> {pageCount}</p>
                 {additionalDetails && <p><span className="font-semibold">Details:</span> {additionalDetails}</p>}
               </div>
             </div>
