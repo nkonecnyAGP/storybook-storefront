@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight, Send, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight, Send, Loader2, RefreshCw, Paintbrush, Image } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
 import type { BookWithPages, Page } from '../types'
@@ -16,6 +16,8 @@ export default function BookDetail() {
   const [feedback, setFeedback] = useState('')
   const [revising, setRevising] = useState(false)
   const [reviseError, setReviseError] = useState('')
+  const [illustrating, setIllustrating] = useState(false)
+  const [illustrateError, setIllustrateError] = useState('')
 
   const fetchBook = () => {
     const headers: Record<string, string> = {}
@@ -81,6 +83,32 @@ export default function BookDetail() {
     }
   }
 
+  const handleIllustrate = async (pageNum?: number) => {
+    if (!user) return
+    setIllustrating(true)
+    setIllustrateError('')
+    try {
+      const res = await fetch(`/api/books/${book.id}/illustrate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`,
+        },
+        body: JSON.stringify(pageNum ? { pageNumber: pageNum } : {}),
+      })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(data.error || 'Illustration failed')
+      }
+      const updated = await res.json() as BookWithPages
+      setBook(updated)
+    } catch (err) {
+      setIllustrateError(err instanceof Error ? err.message : 'Illustration failed')
+    } finally {
+      setIllustrating(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <Link to={isOwner ? '/my-books' : '/'} className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 mb-6 no-underline font-semibold">
@@ -124,13 +152,26 @@ export default function BookDetail() {
             </div>
             <div className="flex items-center gap-3">
               {isDraft && isOwner && (
-                <button
-                  onClick={() => void handlePublish()}
-                  className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold bg-green-500 hover:bg-green-600 text-white transition-colors cursor-pointer"
-                >
-                  <Send size={16} />
-                  Publish
-                </button>
+                <>
+                  <button
+                    onClick={() => void handlePublish()}
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold bg-green-500 hover:bg-green-600 text-white transition-colors cursor-pointer"
+                  >
+                    <Send size={16} />
+                    Publish
+                  </button>
+                  <button
+                    onClick={() => void handleIllustrate()}
+                    disabled={illustrating || pages.every(p => p.illustration_url)}
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold bg-purple-500 hover:bg-purple-600 text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                  >
+                    {illustrating ? <Loader2 size={16} className="animate-spin" /> : <Paintbrush size={16} />}
+                    {illustrating ? 'Illustrating...' : 'Illustrate All'}
+                  </button>
+                </>
+              )}
+              {illustrateError && (
+                <span className="text-sm text-red-500">{illustrateError}</span>
               )}
               {!isDraft && (
                 <>
@@ -163,13 +204,37 @@ export default function BookDetail() {
               <div className="text-sm text-amber-600 dark:text-amber-400 font-semibold mb-4">
                 Page {currentPage + 1} of {pages.length}
               </div>
+
+              {page.illustration_url && (
+                <div className="mb-6 rounded-xl overflow-hidden shadow-md">
+                  <img
+                    src={`http://localhost:3001${page.illustration_url}`}
+                    alt={page.illustration_description}
+                    className="w-full h-auto"
+                  />
+                </div>
+              )}
+
               <p className="text-xl text-gray-700 dark:text-gray-200 leading-relaxed mb-6">{page.text}</p>
-              {page.illustration_description && (
-                <div className="bg-white/60 dark:bg-gray-600/40 rounded-xl p-4 border border-amber-200 dark:border-gray-600">
-                  <p className="text-sm text-amber-700 dark:text-amber-300 italic">
-                    <span className="font-semibold not-italic">Illustration: </span>
-                    {page.illustration_description}
-                  </p>
+
+              {page.illustration_description && !page.illustration_url && (
+                <div className="bg-white/60 dark:bg-gray-600/40 rounded-xl p-4 border border-amber-200 dark:border-gray-600 flex items-start gap-3">
+                  <Image size={18} className="text-amber-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm text-amber-700 dark:text-amber-300 italic">
+                      {page.illustration_description}
+                    </p>
+                    {isOwner && (
+                      <button
+                        onClick={() => void handleIllustrate(page.page_number)}
+                        disabled={illustrating}
+                        className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 cursor-pointer bg-transparent border-none disabled:opacity-40"
+                      >
+                        <Paintbrush size={13} />
+                        {illustrating ? 'Generating...' : 'Generate illustration'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

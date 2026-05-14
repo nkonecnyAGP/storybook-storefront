@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import prisma from '../db/prisma';
 import { getAuthUser } from './auth';
+import { generateIllustration } from '../services/illustrations';
 import type { Request, Response } from 'express';
 
 const router = Router();
@@ -231,6 +232,64 @@ router.get('/:id/versions', async (req: Request<{ id: string }>, res: Response) 
     ...v,
     pages: JSON.parse(v.pages_json),
   })));
+});
+
+router.post('/:id/illustrate', async (req: Request<{ id: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(501).json({ error: 'Image generation not configured (OPENAI_API_KEY missing)' });
+  }
+
+  const book = await prisma.book.findUnique({
+    where: { id: req.params.id },
+    include: { pages: { orderBy: { page_number: 'asc' } } },
+  });
+
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+
+  const { pageNumber } = req.body as { pageNumber?: number };
+
+  const pagesToIllustrate = pageNumber
+    ? book.pages.filter(p => p.page_number === pageNumber)
+    : book.pages.filter(p => !p.illustration_url);
+
+  if (pagesToIllustrate.length === 0) {
+    return res.status(400).json({ error: 'No pages to illustrate' });
+  }
+
+  try {
+    for (const page of pagesToIllustrate) {
+      const url = await generateIllustration(
+        book.id,
+        page.page_number,
+        page.illustration_description,
+      );
+
+      if (url) {
+        await prisma.page.update({
+          where: { id: page.id },
+          data: { illustration_url: url },
+        });
+      }
+    }
+
+    const updated = await prisma.book.findUnique({
+      where: { id: book.id },
+      include: { pages: { orderBy: { page_number: 'asc' } } },
+    });
+
+    res.json(updated);
+  } catch (err: unknown) {
+    console.error('Illustration error:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to generate illustrations. ' + message });
+  }
 });
 
 export default router;

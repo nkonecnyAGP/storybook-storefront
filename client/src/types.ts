@@ -33,6 +33,7 @@ export interface Page {
   page_number: number;
   text: string;
   illustration_description: string;
+  illustration_url: string | null;
 }
 
 export interface CartItem {
