@@ -2,7 +2,7 @@ import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import prisma from '../db/prisma';
 import { getAuthUser } from './auth';
-import { generateIllustration } from '../services/illustrations';
+import { generateIllustration, listIllustrationVersions } from '../services/illustrations';
 import type { Request, Response } from 'express';
 
 const router = Router();
@@ -253,7 +253,7 @@ router.post('/:id/illustrate', async (req: Request<{ id: string }>, res: Respons
     return res.status(404).json({ error: 'Book not found' });
   }
 
-  const { pageNumber } = req.body as { pageNumber?: number };
+  const { pageNumber, feedback } = req.body as { pageNumber?: number; feedback?: string };
 
   const pagesToIllustrate = pageNumber
     ? book.pages.filter(p => p.page_number === pageNumber)
@@ -269,6 +269,7 @@ router.post('/:id/illustrate', async (req: Request<{ id: string }>, res: Respons
         book.id,
         page.page_number,
         page.illustration_description,
+        pageNumber ? feedback : undefined,
       );
 
       if (url) {
@@ -290,6 +291,51 @@ router.post('/:id/illustrate', async (req: Request<{ id: string }>, res: Respons
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to generate illustrations. ' + message });
   }
+});
+
+router.get('/:id/illustrations/:pageNumber', async (req: Request<{ id: string; pageNumber: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+
+  const versions = await listIllustrationVersions(book.id, parseInt(req.params.pageNumber));
+  res.json(versions);
+});
+
+router.put('/:id/illustrations/:pageNumber/revert', async (req: Request<{ id: string; pageNumber: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+
+  const { url } = req.body as { url?: string };
+  if (!url) {
+    return res.status(400).json({ error: 'url is required' });
+  }
+
+  const pageNum = parseInt(req.params.pageNumber);
+  await prisma.page.update({
+    where: { book_id_page_number: { book_id: book.id, page_number: pageNum } },
+    data: { illustration_url: url },
+  });
+
+  const updated = await prisma.book.findUnique({
+    where: { id: book.id },
+    include: { pages: { orderBy: { page_number: 'asc' } } },
+  });
+
+  res.json(updated);
 });
 
 export default router;

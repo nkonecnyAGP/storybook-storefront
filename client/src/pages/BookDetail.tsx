@@ -18,6 +18,9 @@ export default function BookDetail() {
   const [reviseError, setReviseError] = useState('')
   const [illustrating, setIllustrating] = useState(false)
   const [illustrateError, setIllustrateError] = useState('')
+  const [illustrationFeedback, setIllustrationFeedback] = useState('')
+  const [illustrationVersions, setIllustrationVersions] = useState<string[]>([])
+  const [showVersions, setShowVersions] = useState(false)
 
   const fetchBook = () => {
     const headers: Record<string, string> = {}
@@ -88,13 +91,18 @@ export default function BookDetail() {
     setIllustrating(true)
     setIllustrateError('')
     try {
+      const body: Record<string, unknown> = {}
+      if (pageNum) {
+        body.pageNumber = pageNum
+        if (illustrationFeedback.trim()) body.feedback = illustrationFeedback.trim()
+      }
       const res = await fetch(`/api/books/${book.id}/illustrate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${user.token}`,
         },
-        body: JSON.stringify(pageNum ? { pageNumber: pageNum } : {}),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const data = await res.json() as { error?: string }
@@ -106,6 +114,35 @@ export default function BookDetail() {
       setIllustrateError(err instanceof Error ? err.message : 'Illustration failed')
     } finally {
       setIllustrating(false)
+    }
+  }
+
+  const loadVersions = async (pageNum: number) => {
+    if (!user || !book) return
+    const res = await fetch(`/api/books/${book.id}/illustrations/${pageNum}`, {
+      headers: { 'Authorization': `Bearer ${user.token}` },
+    })
+    if (res.ok) {
+      const versions = await res.json() as string[]
+      setIllustrationVersions(versions)
+      setShowVersions(true)
+    }
+  }
+
+  const revertIllustration = async (pageNum: number, url: string) => {
+    if (!user || !book) return
+    const res = await fetch(`/api/books/${book.id}/illustrations/${pageNum}/revert`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`,
+      },
+      body: JSON.stringify({ url }),
+    })
+    if (res.ok) {
+      const updated = await res.json() as BookWithPages
+      setBook(updated)
+      setShowVersions(false)
     }
   }
 
@@ -206,12 +243,59 @@ export default function BookDetail() {
               </div>
 
               {page.illustration_url && (
-                <div className="mb-6 rounded-xl overflow-hidden shadow-md">
-                  <img
-                    src={`http://localhost:3001${page.illustration_url}`}
-                    alt={page.illustration_description}
-                    className="w-full h-auto"
-                  />
+                <div className="mb-6">
+                  <div className="rounded-xl overflow-hidden shadow-md">
+                    <img
+                      src={`http://localhost:3001${page.illustration_url}`}
+                      alt={page.illustration_description}
+                      className="w-full h-auto"
+                    />
+                  </div>
+                  {isOwner && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={illustrationFeedback}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIllustrationFeedback(e.target.value)}
+                          placeholder="e.g., make the colors warmer, add more stars..."
+                          disabled={illustrating}
+                          className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm focus:border-purple-400 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50"
+                        />
+                        <button
+                          onClick={() => { void handleIllustrate(page.page_number); setIllustrationFeedback('') }}
+                          disabled={illustrating}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 cursor-pointer border-none disabled:opacity-40 whitespace-nowrap"
+                        >
+                          {illustrating ? <Loader2 size={14} className="animate-spin" /> : <Paintbrush size={14} />}
+                          Regenerate
+                        </button>
+                        <button
+                          onClick={() => void loadVersions(page.page_number)}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer border-none whitespace-nowrap"
+                        >
+                          History
+                        </button>
+                      </div>
+                      {showVersions && illustrationVersions.length > 1 && (
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {illustrationVersions.map((url, i) => (
+                            <button
+                              key={url}
+                              onClick={() => void revertIllustration(page.page_number, url)}
+                              className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer ${
+                                url === page.illustration_url
+                                  ? 'border-purple-500'
+                                  : 'border-gray-200 dark:border-gray-600 hover:border-purple-300'
+                              }`}
+                            >
+                              <img src={`http://localhost:3001${url}`} alt={`Version ${i + 1}`} className="w-full h-full object-cover" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
