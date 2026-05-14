@@ -7,6 +7,15 @@ export interface User {
   created_at: string;
 }
 
+export type CharacterRole = 'primary' | 'antagonist' | 'supporting';
+
+export interface Character {
+  role: CharacterRole;
+  name: string;
+  descriptor?: string;
+  relationship?: string;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -16,11 +25,15 @@ export interface Book {
   age_range: string;
   cover_emoji: string;
   cover_color: string;
+  cover_url: string | null;
   price: number;
   is_featured: number;
   is_user_created: number;
   status: string;
   version: number;
+  characters: Character[];
+  style_descriptor: string | null;
+  style_reference_url: string | null;
   created_by: string | null;
   created_at: string;
 }

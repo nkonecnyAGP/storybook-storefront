@@ -8,11 +8,13 @@ export async function generateIllustration(
   pageNumber: number,
   description: string,
   feedback?: string,
+  styleDescriptor?: string | null,
 ): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  let prompt = `Children's book illustration, ${description}. Whimsical, colorful, warm, suitable for young children. No text or words in the image.`;
+  const style = styleDescriptor?.trim() || 'Whimsical, colorful, warm, suitable for young children';
+  let prompt = `Children's book illustration, ${description}. ${style}. No text or words in the image.`;
   if (feedback) {
     prompt += ` Revision instructions: ${feedback}`;
   }
@@ -84,4 +86,47 @@ export async function listIllustrationVersions(
   } catch {
     return [];
   }
+}
+
+export async function generateCover(
+  bookId: string,
+  title: string,
+  description: string,
+  styleDescriptor?: string | null,
+): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  const style = styleDescriptor?.trim() || 'Whimsical, colorful, warm, suitable for young children';
+  const prompt = `Children's book cover illustration for a story titled "${title}". Scene: ${description}. ${style}. Composition suitable for a book cover (centered subject, room at top for title). No text or words in the image.`;
+
+  const res = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'dall-e-3',
+      prompt,
+      n: 1,
+      size: '1024x1024',
+      response_format: 'b64_json',
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    console.error('DALL-E cover error:', err);
+    return null;
+  }
+
+  const data = await res.json() as { data: { b64_json: string }[] };
+  const buffer = Buffer.from(data.data[0].b64_json, 'base64');
+
+  const dir = join(ILLUSTRATIONS_DIR, bookId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'cover.png'), buffer);
+
+  return `/illustrations/${bookId}/cover.png`;
 }

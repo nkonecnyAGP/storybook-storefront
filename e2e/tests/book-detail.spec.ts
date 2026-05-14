@@ -20,15 +20,25 @@ test.describe('Book detail page', () => {
     await expect(page.getByText('fantasy')).toBeVisible();
   });
 
-  test('page reader shows "Page 1 of 5"', async ({ page }) => {
+  test('spread view opens on the cover and Reader view toggle shows page 1', async ({ page }) => {
     await page.goto('/book/luna-star-garden');
+    // Default view is the BookSpread; it opens on the cover spread.
+    await expect(page.getByText('Cover', { exact: true })).toBeVisible();
+
+    // Switch to the legacy Reader view via the view toggle.
+    await page.getByRole('button', { name: 'Reader view' }).click();
     await expect(page.getByText('Page 1 of 5')).toBeVisible();
   });
 
-  test('clicking "Next" advances to page 2', async ({ page }) => {
+  test('advancing through the spread view goes Cover → Page 1 → Page 2', async ({ page }) => {
     await page.goto('/book/luna-star-garden');
+    await expect(page.getByText('Cover', { exact: true })).toBeVisible();
+
+    // The spread view exposes Next/Previous chevron buttons with aria-labels.
+    const nextSpread = page.getByRole('button', { name: 'Next spread' });
+    await nextSpread.click();
     await expect(page.getByText('Page 1 of 5')).toBeVisible();
-    await page.getByRole('button', { name: 'Next' }).click();
+    await nextSpread.click();
     await expect(page.getByText('Page 2 of 5')).toBeVisible();
   });
 
