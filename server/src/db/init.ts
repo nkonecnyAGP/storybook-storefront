@@ -1,12 +1,13 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import type { Store, Book, Page } from '../types';
+import type { Store, Book } from '../types';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = join(__dirname, '..', '..', 'data.json');
 
 let store: Store = {
+  users: [],
   books: [],
   pages: [],
   cartItems: [],
@@ -20,7 +21,15 @@ function persist(): void {
 
 function load(): void {
   if (existsSync(DB_PATH)) {
-    store = JSON.parse(readFileSync(DB_PATH, 'utf-8')) as Store;
+    const data = JSON.parse(readFileSync(DB_PATH, 'utf-8')) as Partial<Store>;
+    store = {
+      users: data.users ?? [],
+      books: data.books ?? [],
+      pages: data.pages ?? [],
+      cartItems: data.cartItems ?? [],
+      orders: data.orders ?? [],
+      orderItems: data.orderItems ?? [],
+    };
   }
 }
 
@@ -30,6 +39,7 @@ export function getStore(): Store {
 
 export function resetStore(): void {
   store = {
+    users: [],
     books: [],
     pages: [],
     cartItems: [],
@@ -63,6 +73,7 @@ function seed(): void {
       price: 19.99,
       is_featured: 1,
       is_user_created: 0,
+      created_by: null,
       created_at: new Date().toISOString(),
     },
     {
@@ -77,6 +88,7 @@ function seed(): void {
       price: 18.99,
       is_featured: 1,
       is_user_created: 0,
+      created_by: null,
       created_at: new Date().toISOString(),
     },
     {
@@ -91,6 +103,7 @@ function seed(): void {
       price: 19.99,
       is_featured: 1,
       is_user_created: 0,
+      created_by: null,
       created_at: new Date().toISOString(),
     },
     {
@@ -105,6 +118,7 @@ function seed(): void {
       price: 17.99,
       is_featured: 0,
       is_user_created: 0,
+      created_by: null,
       created_at: new Date().toISOString(),
     },
     {
@@ -119,6 +133,7 @@ function seed(): void {
       price: 21.99,
       is_featured: 0,
       is_user_created: 0,
+      created_by: null,
       created_at: new Date().toISOString(),
     },
     {
@@ -133,6 +148,7 @@ function seed(): void {
       price: 16.99,
       is_featured: 0,
       is_user_created: 0,
+      created_by: null,
       created_at: new Date().toISOString(),
     },
   ];

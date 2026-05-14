@@ -6,6 +6,9 @@ import CreateBook from './pages/CreateBook'
 import Cart from './pages/Cart'
 import Checkout from './pages/Checkout'
 import OrderConfirmation from './pages/OrderConfirmation'
+import Login from './pages/Login'
+import Register from './pages/Register'
+import MyBooks from './pages/MyBooks'
 
 function App() {
   return (
@@ -19,6 +22,9 @@ function App() {
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/order/:id" element={<OrderConfirmation />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/my-books" element={<MyBooks />} />
         </Routes>
       </main>
       <footer className="text-center py-8 text-gray-400 dark:text-gray-600 text-sm font-body">

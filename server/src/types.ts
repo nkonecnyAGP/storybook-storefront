@@ -1,3 +1,12 @@
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  password_hash: string;
+  token: string | null;
+  created_at: string;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -10,6 +19,7 @@ export interface Book {
   price: number;
   is_featured: number;
   is_user_created: number;
+  created_by: string | null;
   created_at: string;
 }
 
@@ -48,6 +58,7 @@ export interface OrderItem {
 }
 
 export interface Store {
+  users: User[];
   books: Book[];
   pages: Page[];
   cartItems: CartItem[];

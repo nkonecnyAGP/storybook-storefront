@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Sparkles, Wand2, Loader2 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 interface ThemeOption {
   value: string;
@@ -23,6 +24,7 @@ const AGE_RANGES: string[] = ['2-4', '3-6', '4-7', '5-9', '6-10']
 
 export default function CreateBook() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [step, setStep] = useState(1)
   const [theme, setTheme] = useState('')
   const [characterName, setCharacterName] = useState('')
@@ -41,9 +43,11 @@ export default function CreateBook() {
     setGenerating(true)
     setError('')
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (user?.token) headers['Authorization'] = `Bearer ${user.token}`
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ theme, characterName, ageRange, additionalDetails }),
       })
       if (!res.ok) {

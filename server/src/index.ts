@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { initDb } from './db/init';
+import authRouter from './routes/auth';
 import booksRouter from './routes/books';
 import generateRouter from './routes/generate';
 import cartRouter from './routes/cart';
@@ -22,6 +23,7 @@ app.use(express.json({ limit: '10mb' }));
 
 initDb();
 
+app.use('/api/auth', authRouter);
 app.use('/api/books', booksRouter);
 app.use('/api/generate', generateRouter);
 app.use('/api/cart', cartRouter);

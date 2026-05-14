@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getStore } from '../db/init';
+import { getAuthUser } from './auth';
 import type { Request, Response } from 'express';
 import type { Book } from '../types';
 
@@ -17,6 +18,16 @@ router.get('/', (req: Request, res: Response) => {
 
   result.sort((a, b) => (b.is_featured || 0) - (a.is_featured || 0));
   res.json(result);
+});
+
+router.get('/mine', (req: Request, res: Response) => {
+  const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  const { books } = getStore();
+  const myBooks = books.filter(b => b.created_by === user.id);
+  res.json(myBooks);
 });
 
 router.get('/themes', (_req: Request, res: Response) => {

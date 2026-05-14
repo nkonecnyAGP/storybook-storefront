@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore, save } from '../db/init';
+import { getAuthUser } from './auth';
 import type { Request, Response } from 'express';
 
 interface GenerateRequestBody {
@@ -88,11 +89,12 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
 
     const bookId = uuidv4();
     const store = getStore();
+    const user = getAuthUser(req);
 
     store.books.push({
       id: bookId,
       title: story.title,
-      author: 'AI Storybook',
+      author: user ? user.name : 'AI Storybook',
       description: story.description,
       theme,
       age_range: ageRange,
@@ -101,6 +103,7 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
       price: 24.99,
       is_featured: 0,
       is_user_created: 1,
+      created_by: user ? user.id : null,
       created_at: new Date().toISOString(),
     });
 
