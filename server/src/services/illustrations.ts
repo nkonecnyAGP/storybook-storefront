@@ -2,6 +2,56 @@ import { writeFile, mkdir, readdir } from 'fs/promises';
 import { join } from 'path';
 
 const ILLUSTRATIONS_DIR = join(import.meta.dirname, '../../public/illustrations');
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+
+interface OpenAIImageItem {
+  url?: string;
+  b64_json?: string;
+}
+
+async function callOpenAIImage(apiKey: string, prompt: string): Promise<Buffer | null> {
+  const res = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: IMAGE_MODEL,
+      prompt,
+      n: 1,
+      size: '1024x1024',
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    console.error(`OpenAI image error (${IMAGE_MODEL}):`, err);
+    return null;
+  }
+
+  const data = await res.json() as { data: OpenAIImageItem[] };
+  const item = data.data[0];
+  if (!item) {
+    console.error('OpenAI image response had no data entries');
+    return null;
+  }
+
+  if (item.b64_json) {
+    return Buffer.from(item.b64_json, 'base64');
+  }
+  if (item.url) {
+    const imageRes = await fetch(item.url);
+    if (!imageRes.ok) {
+      console.error('Failed to download generated image:', imageRes.status);
+      return null;
+    }
+    return Buffer.from(await imageRes.arrayBuffer());
+  }
+
+  console.error('OpenAI image response had neither b64_json nor url');
+  return null;
+}
 
 export async function generateIllustration(
   bookId: string,
@@ -19,30 +69,8 @@ export async function generateIllustration(
     prompt += ` Revision instructions: ${feedback}`;
   }
 
-  const res = await fetch('https://api.openai.com/v1/images/generations', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'dall-e-3',
-      prompt,
-      n: 1,
-      size: '1024x1024',
-      response_format: 'b64_json',
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    console.error('DALL-E error:', err);
-    return null;
-  }
-
-  const data = await res.json() as { data: { b64_json: string }[] };
-  const imageData = data.data[0].b64_json;
-  const buffer = Buffer.from(imageData, 'base64');
+  const buffer = await callOpenAIImage(apiKey, prompt);
+  if (!buffer) return null;
 
   const dir = join(ILLUSTRATIONS_DIR, bookId);
   await mkdir(dir, { recursive: true });
@@ -100,29 +128,8 @@ export async function generateCover(
   const style = styleDescriptor?.trim() || 'Whimsical, colorful, warm, suitable for young children';
   const prompt = `Children's book cover illustration for a story titled "${title}". Scene: ${description}. ${style}. Composition suitable for a book cover (centered subject, room at top for title). No text or words in the image.`;
 
-  const res = await fetch('https://api.openai.com/v1/images/generations', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'dall-e-3',
-      prompt,
-      n: 1,
-      size: '1024x1024',
-      response_format: 'b64_json',
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    console.error('DALL-E cover error:', err);
-    return null;
-  }
-
-  const data = await res.json() as { data: { b64_json: string }[] };
-  const buffer = Buffer.from(data.data[0].b64_json, 'base64');
+  const buffer = await callOpenAIImage(apiKey, prompt);
+  if (!buffer) return null;
 
   const dir = join(ILLUSTRATIONS_DIR, bookId);
   await mkdir(dir, { recursive: true });
