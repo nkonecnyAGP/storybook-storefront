@@ -2,13 +2,22 @@ import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import prisma from '../db/prisma';
 import { getAuthUser } from './auth';
+import { generateCover, generateIllustration } from '../services/illustrations';
 import type { Request, Response } from 'express';
+import type { Character, CharacterRole } from '../types';
+
+type PreviewMode = 'quick' | 'cover' | 'full';
+const VALID_PREVIEW_MODES: PreviewMode[] = ['quick', 'cover', 'full'];
 
 interface GenerateRequestBody {
   theme: string;
-  characterName: string;
   ageRange: string;
   additionalDetails?: string;
+  characterName?: string;
+  characters?: Character[];
+  styleDescriptor?: string;
+  styleReferenceUrl?: string;
+  previewMode?: PreviewMode;
 }
 
 interface GeneratedStory {
@@ -16,19 +25,70 @@ interface GeneratedStory {
   description: string;
   coverEmoji: string;
   coverColor: string;
+  coverDescription: string;
   pages: {
     text: string;
     illustrationDescription: string;
   }[];
 }
 
+const VALID_ROLES: CharacterRole[] = ['primary', 'antagonist', 'supporting'];
+
+function normalizeCharacters(body: GenerateRequestBody): Character[] {
+  if (Array.isArray(body.characters) && body.characters.length > 0) {
+    return body.characters
+      .filter(c => c && typeof c.name === 'string' && c.name.trim() && VALID_ROLES.includes(c.role))
+      .map(c => ({
+        role: c.role,
+        name: c.name.trim(),
+        descriptor: c.descriptor?.trim() || undefined,
+        relationship: c.relationship?.trim() || undefined,
+      }));
+  }
+  if (body.characterName?.trim()) {
+    return [{ role: 'primary', name: body.characterName.trim() }];
+  }
+  return [];
+}
+
+function formatCastForPrompt(characters: Character[]): string {
+  const groups: Record<CharacterRole, Character[]> = { primary: [], antagonist: [], supporting: [] };
+  for (const c of characters) groups[c.role].push(c);
+
+  const lines: string[] = [];
+  if (groups.primary.length > 0) {
+    lines.push(`Primary character: ${groups.primary.map(formatCharacter).join('; ')}`);
+  }
+  if (groups.antagonist.length > 0) {
+    lines.push(`Antagonist${groups.antagonist.length > 1 ? 's' : ''}: ${groups.antagonist.map(formatCharacter).join('; ')}`);
+  }
+  if (groups.supporting.length > 0) {
+    lines.push(`Supporting cast: ${groups.supporting.map(formatCharacter).join('; ')}`);
+  }
+  return lines.join('\n');
+}
+
+function formatCharacter(c: Character): string {
+  const parts = [c.name];
+  if (c.relationship) parts.push(`(${c.relationship})`);
+  if (c.descriptor) parts.push(`— ${c.descriptor}`);
+  return parts.join(' ');
+}
+
 const router = Router();
 
 router.post('/', async (req: Request, res: Response) => {
-  const { theme, characterName, ageRange, additionalDetails } = req.body as GenerateRequestBody;
+  const body = req.body as GenerateRequestBody;
+  const { theme, ageRange, additionalDetails, styleDescriptor, styleReferenceUrl } = body;
+  const previewMode: PreviewMode = body.previewMode && VALID_PREVIEW_MODES.includes(body.previewMode)
+    ? body.previewMode
+    : 'quick';
 
-  if (!theme || !characterName || !ageRange) {
-    return res.status(400).json({ error: 'theme, characterName, and ageRange are required' });
+  const characters = normalizeCharacters(body);
+  const primary = characters.find(c => c.role === 'primary');
+
+  if (!theme || !ageRange || !primary) {
+    return res.status(400).json({ error: 'theme, ageRange, and at least one primary character are required' });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -42,9 +102,11 @@ router.post('/', async (req: Request, res: Response) => {
     const prompt = `You are a beloved children's book author. Create a short children's story with exactly 5 pages.
 
 Theme: ${theme}
-Main character name: ${characterName}
 Target age range: ${ageRange}
+${formatCastForPrompt(characters)}
 ${additionalDetails ? `Additional details: ${additionalDetails}` : ''}
+
+Use every character listed above. The primary character is the protagonist. Antagonists provide conflict that gets resolved by the end. Supporting characters should appear at least once with their relationship to the primary character reflected in the story.
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
@@ -52,6 +114,7 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
   "description": "A 1-2 sentence book description for the catalog",
   "coverEmoji": "A single emoji that represents this story",
   "coverColor": "A hex color that fits the story mood (choose from: #7c3aed, #0891b2, #dc2626, #16a34a, #f59e0b, #ec4899, #6366f1, #0d9488)",
+  "coverDescription": "1-2 sentence vivid description of the cover scene (centered subject, room above for the title, captures the spirit of the story)",
   "pages": [
     {
       "text": "The story text for this page (2-4 sentences, age-appropriate language)",
@@ -88,7 +151,7 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
 
     const user = await getAuthUser(req);
 
-    const book = await prisma.book.create({
+    let book = await prisma.book.create({
       data: {
         title: story.title,
         author: user ? user.name : 'AI Storybook',
@@ -102,6 +165,9 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
         is_user_created: true,
         status: user ? 'draft' : 'published',
         version: 1,
+        characters_json: JSON.stringify(characters),
+        style_descriptor: styleDescriptor?.trim() || null,
+        style_reference_url: styleReferenceUrl?.trim() || null,
         created_by: user?.id ?? null,
         pages: {
           create: story.pages.map((page, i) => ({
@@ -120,7 +186,43 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
       include: { pages: { orderBy: { page_number: 'asc' } } },
     });
 
-    res.json(book);
+    if ((previewMode === 'cover' || previewMode === 'full') && process.env.OPENAI_API_KEY) {
+      const coverUrl = await generateCover(
+        book.id,
+        story.title,
+        story.coverDescription || story.description,
+        styleDescriptor,
+      );
+      if (coverUrl) {
+        book = await prisma.book.update({
+          where: { id: book.id },
+          data: { cover_url: coverUrl },
+          include: { pages: { orderBy: { page_number: 'asc' } } },
+        });
+      }
+    }
+
+    if (previewMode === 'full' && process.env.OPENAI_API_KEY) {
+      for (const page of book.pages) {
+        const url = await generateIllustration(
+          book.id,
+          page.page_number,
+          page.illustration_description,
+          undefined,
+          styleDescriptor,
+        );
+        if (url) {
+          await prisma.page.update({ where: { id: page.id }, data: { illustration_url: url } });
+        }
+      }
+      const refreshed = await prisma.book.findUnique({
+        where: { id: book.id },
+        include: { pages: { orderBy: { page_number: 'asc' } } },
+      });
+      if (refreshed) book = refreshed;
+    }
+
+    res.json({ ...book, characters });
   } catch (err: unknown) {
     console.error('Generation error:', err);
     const message = err instanceof Error ? err.message : String(err);

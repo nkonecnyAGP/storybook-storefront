@@ -28,11 +28,15 @@ model Book {
   age_range       String
   cover_emoji     String
   cover_color     String
+  cover_url       String?
   price           Float
   is_featured     Boolean  @default(false)
   is_user_created Boolean  @default(false)
   status          String   @default("published")
   version         Int      @default(1)
+  characters_json String?
+  style_descriptor String?
+  style_reference_url String?
   created_by      String?
   created_at      DateTime @default(now())
 

@@ -4,8 +4,24 @@ import prisma from '../db/prisma';
 import { getAuthUser } from './auth';
 import { generateIllustration, listIllustrationVersions } from '../services/illustrations';
 import type { Request, Response } from 'express';
+import type { Character } from '../types';
 
 const router = Router();
+
+type BookRow = { characters_json?: string | null } & Record<string, unknown>;
+
+function hydrateBook<T extends BookRow>(book: T): T & { characters: Character[] } {
+  let characters: Character[] = [];
+  if (book.characters_json) {
+    try {
+      const parsed = JSON.parse(book.characters_json) as unknown;
+      if (Array.isArray(parsed)) characters = parsed as Character[];
+    } catch {
+      characters = [];
+    }
+  }
+  return { ...book, characters };
+}
 
 router.get('/', async (req: Request, res: Response) => {
   const { theme, age_range, featured, search } = req.query;
@@ -27,7 +43,7 @@ router.get('/', async (req: Request, res: Response) => {
     orderBy: { is_featured: 'desc' },
   });
 
-  res.json(books);
+  res.json(books.map(hydrateBook));
 });
 
 router.get('/mine', async (req: Request, res: Response) => {
@@ -38,7 +54,7 @@ router.get('/mine', async (req: Request, res: Response) => {
   const books = await prisma.book.findMany({
     where: { created_by: user.id },
   });
-  res.json(books);
+  res.json(books.map(hydrateBook));
 });
 
 router.get('/themes', async (_req: Request, res: Response) => {
@@ -72,7 +88,7 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
     }
   }
 
-  res.json(book);
+  res.json(hydrateBook(book));
 });
 
 router.put('/:id/publish', async (req: Request<{ id: string }>, res: Response) => {
@@ -91,7 +107,7 @@ router.put('/:id/publish', async (req: Request<{ id: string }>, res: Response) =
     data: { status: 'published' },
   });
 
-  res.json(updated);
+  res.json(hydrateBook(updated));
 });
 
 router.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
@@ -143,12 +159,18 @@ router.post('/:id/revise', async (req: Request<{ id: string }>, res: Response) =
 
     const client = new Anthropic({ apiKey });
 
+    const hydrated = hydrateBook(book);
+    const castLine = hydrated.characters.length > 0
+      ? `Cast (keep these characters consistent): ${hydrated.characters.map(c => `${c.name} (${c.role}${c.relationship ? `, ${c.relationship}` : ''})`).join('; ')}`
+      : '';
+
     const prompt = `You are revising a children's story based on reader feedback. Here is the current story:
 
 Title: ${book.title}
 Theme: ${book.theme}
 Age range: ${book.age_range}
 Description: ${book.description}
+${castLine}
 
 Current pages:
 ${currentPages.map(p => `Page ${p.page_number}: ${p.text}\n  Illustration: ${p.illustrationDescription}`).join('\n\n')}
@@ -217,7 +239,7 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
       include: { pages: { orderBy: { page_number: 'asc' } } },
     });
 
-    res.json(updated);
+    res.json(hydrateBook(updated));
   } catch (err: unknown) {
     console.error('Revision error:', err);
     const message = err instanceof Error ? err.message : String(err);
@@ -283,6 +305,7 @@ router.post('/:id/illustrate', async (req: Request<{ id: string }>, res: Respons
         page.page_number,
         page.illustration_description,
         pageNumber ? feedback : undefined,
+        book.style_descriptor,
       );
 
       if (url) {
@@ -298,7 +321,7 @@ router.post('/:id/illustrate', async (req: Request<{ id: string }>, res: Respons
       include: { pages: { orderBy: { page_number: 'asc' } } },
     });
 
-    res.json(updated);
+    res.json(updated ? hydrateBook(updated) : null);
   } catch (err: unknown) {
     console.error('Illustration error:', err);
     const message = err instanceof Error ? err.message : String(err);
@@ -348,7 +371,7 @@ router.put('/:id/illustrations/:pageNumber/revert', async (req: Request<{ id: st
     include: { pages: { orderBy: { page_number: 'asc' } } },
   });
 
-  res.json(updated);
+  res.json(updated ? hydrateBook(updated) : null);
 });
 
 export default router;

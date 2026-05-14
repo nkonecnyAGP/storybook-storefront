@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight, Send, Loader2, RefreshCw, Paintbrush, Image } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight, Send, Loader2, RefreshCw, Paintbrush, Image, BookOpen, FileText } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
 import type { BookWithPages, Page } from '../types'
+import BookSpread from '../components/BookSpread'
 
 export default function BookDetail() {
   const { id } = useParams<{ id: string }>()
@@ -21,6 +22,7 @@ export default function BookDetail() {
   const [illustrationFeedback, setIllustrationFeedback] = useState('')
   const [illustrationVersions, setIllustrationVersions] = useState<string[]>([])
   const [showVersions, setShowVersions] = useState(false)
+  const [viewMode, setViewMode] = useState<'spread' | 'reader'>('spread')
 
   const fetchBook = () => {
     const headers: Record<string, string> = {}
@@ -46,8 +48,9 @@ export default function BookDetail() {
     setTimeout(() => setAdded(false), 2000)
   }
 
-  const handleRevise = async () => {
-    if (!feedback.trim() || !user) return
+  const handleRevise = async (feedbackText?: string) => {
+    const text = (feedbackText ?? feedback).trim()
+    if (!text || !user) return
     setRevising(true)
     setReviseError('')
     try {
@@ -57,7 +60,7 @@ export default function BookDetail() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${user.token}`,
         },
-        body: JSON.stringify({ feedback }),
+        body: JSON.stringify({ feedback: text }),
       })
       if (!res.ok) {
         const data = await res.json() as { error?: string }
@@ -174,7 +177,7 @@ export default function BookDetail() {
             <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 font-display mb-2">{book.title}</h1>
             <p className="text-gray-500 dark:text-gray-400 mb-1">by {book.author}</p>
             <p className="text-gray-600 dark:text-gray-300 mb-4">{book.description}</p>
-            <div className="flex gap-2 mb-4">
+            <div className="flex flex-wrap gap-2 mb-4">
               <span className="text-sm bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-3 py-1 rounded-full font-semibold">
                 Ages {book.age_range}
               </span>
@@ -187,6 +190,23 @@ export default function BookDetail() {
                 </span>
               ) : null}
             </div>
+            {book.characters && book.characters.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                <span className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 self-center mr-1">Cast:</span>
+                {book.characters.map((c, i) => {
+                  const tone =
+                    c.role === 'primary' ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800' :
+                    c.role === 'antagonist' ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800' :
+                    'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+                  return (
+                    <span key={i} className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${tone}`} title={c.descriptor || c.relationship || c.role}>
+                      {c.name}
+                      {c.relationship ? ` · ${c.relationship}` : ''}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <div className="flex items-center gap-3">
               {isDraft && isOwner && (
                 <>
@@ -231,8 +251,55 @@ export default function BookDetail() {
         </div>
       </div>
 
-      {/* Page Reader */}
-      {pages.length > 0 && page && (
+      {/* View mode toggle */}
+      {pages.length > 0 && (
+        <div className="flex justify-end mb-3">
+          <div className="inline-flex bg-white dark:bg-gray-800 rounded-xl p-1 shadow-sm">
+            <button
+              onClick={() => setViewMode('spread')}
+              aria-pressed={viewMode === 'spread'}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold cursor-pointer border-none transition-colors ${
+                viewMode === 'spread'
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-transparent text-gray-500 dark:text-gray-400 hover:bg-amber-50 dark:hover:bg-gray-700'
+              }`}
+            >
+              <BookOpen size={14} /> Book view
+            </button>
+            <button
+              onClick={() => setViewMode('reader')}
+              aria-pressed={viewMode === 'reader'}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold cursor-pointer border-none transition-colors ${
+                viewMode === 'reader'
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-transparent text-gray-500 dark:text-gray-400 hover:bg-amber-50 dark:hover:bg-gray-700'
+              }`}
+            >
+              <FileText size={14} /> Reader view
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Book spread view */}
+      {viewMode === 'spread' && pages.length > 0 && (
+        <BookSpread
+          book={book}
+          isOwner={!!isOwner}
+          isDraft={isDraft}
+          illustrating={illustrating}
+          onIllustratePage={async (pageNum, fb) => {
+            if (fb !== undefined) setIllustrationFeedback(fb)
+            await handleIllustrate(pageNum)
+          }}
+          onRevise={handleRevise}
+          revising={revising}
+          reviseError={reviseError}
+        />
+      )}
+
+      {/* Page Reader (legacy reader view) */}
+      {viewMode === 'reader' && pages.length > 0 && page && (
         <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg p-8 transition-colors mb-8">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 font-display mb-6">Read the Story</h2>
 
