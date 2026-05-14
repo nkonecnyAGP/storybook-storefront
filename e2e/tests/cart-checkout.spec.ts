@@ -18,6 +18,7 @@ test.describe('Cart and checkout', () => {
   test('cart page shows the item with correct title and price', async ({ page }) => {
     const firstTitle = await page.getByRole('heading', { level: 3 }).first().textContent();
     await page.getByRole('button', { name: 'Add to Cart' }).first().click();
+    await expect(page.locator('nav .bg-red-500')).toHaveText('1');
 
     await page.goto('/cart');
     await expect(page.getByText(firstTitle!)).toBeVisible();
@@ -26,6 +27,7 @@ test.describe('Cart and checkout', () => {
 
   test('quantity +/- buttons work', async ({ page }) => {
     await page.getByRole('button', { name: 'Add to Cart' }).first().click();
+    await expect(page.locator('nav .bg-red-500')).toHaveText('1');
     await page.goto('/cart');
 
     await expect(page.getByRole('button', { name: 'Decrease quantity' })).toBeVisible();
@@ -39,6 +41,7 @@ test.describe('Cart and checkout', () => {
 
   test('removing an item empties the cart', async ({ page }) => {
     await page.getByRole('button', { name: 'Add to Cart' }).first().click();
+    await expect(page.locator('nav .bg-red-500')).toHaveText('1');
     await page.goto('/cart');
 
     await expect(page.getByRole('button', { name: 'Remove from cart' })).toBeVisible();
@@ -49,6 +52,7 @@ test.describe('Cart and checkout', () => {
 
   test('full checkout flow: add -> cart -> checkout -> order confirmation', async ({ page }) => {
     await page.getByRole('button', { name: 'Add to Cart' }).first().click();
+    await expect(page.locator('nav .bg-red-500')).toHaveText('1');
 
     await page.goto('/cart');
     await expect(page.getByText('Your Cart')).toBeVisible();

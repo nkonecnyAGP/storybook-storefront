@@ -8,12 +8,19 @@ import type { Request, Response } from 'express';
 const router = Router();
 
 router.get('/', async (req: Request, res: Response) => {
-  const { theme, age_range, featured } = req.query;
+  const { theme, age_range, featured, search } = req.query;
 
   const where: Record<string, unknown> = { status: 'published' };
   if (theme) where.theme = theme;
   if (age_range) where.age_range = age_range;
   if (featured === 'true') where.is_featured = true;
+  if (search && typeof search === 'string' && search.trim()) {
+    where.OR = [
+      { title: { contains: search.trim() } },
+      { description: { contains: search.trim() } },
+      { author: { contains: search.trim() } },
+    ];
+  }
 
   const books = await prisma.book.findMany({
     where,
@@ -38,6 +45,12 @@ router.get('/themes', async (_req: Request, res: Response) => {
   const books = await prisma.book.findMany({ select: { theme: true } });
   const themes = [...new Set(books.map(b => b.theme))].sort();
   res.json(themes);
+});
+
+router.get('/age-ranges', async (_req: Request, res: Response) => {
+  const books = await prisma.book.findMany({ select: { age_range: true } });
+  const ranges = [...new Set(books.map(b => b.age_range))].sort();
+  res.json(ranges);
 });
 
 router.get('/:id', async (req: Request<{ id: string }>, res: Response) => {

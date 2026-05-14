@@ -34,6 +34,7 @@ const mockBooks: Book[] = [
 ]
 
 const mockThemes = ['adventure', 'kindness']
+const mockAgeRanges = ['3-5', '4-7']
 
 // Mock CartContext since BookCard uses it
 vi.mock('../../context/CartContext', () => ({
@@ -63,7 +64,6 @@ describe('Home', () => {
   })
 
   it('renders the hero section with "Stories Made with Magic"', () => {
-    // Mock fetch to return a fresh Response each time (Response body can only be consumed once)
     vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
       Promise.resolve(new Response(JSON.stringify([]), { headers: { 'Content-Type': 'application/json' } }))
     )
@@ -78,14 +78,17 @@ describe('Home', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(() => {
       callCount++
       if (callCount === 1) {
-        // /api/books
         return Promise.resolve(
           new Response(JSON.stringify(mockBooks), { headers: { 'Content-Type': 'application/json' } })
         )
       }
-      // /api/books/themes
+      if (callCount === 2) {
+        return Promise.resolve(
+          new Response(JSON.stringify(mockThemes), { headers: { 'Content-Type': 'application/json' } })
+        )
+      }
       return Promise.resolve(
-        new Response(JSON.stringify(mockThemes), { headers: { 'Content-Type': 'application/json' } })
+        new Response(JSON.stringify(mockAgeRanges), { headers: { 'Content-Type': 'application/json' } })
       )
     })
 
@@ -108,32 +111,37 @@ describe('Home', () => {
           new Response(JSON.stringify(mockBooks), { headers: { 'Content-Type': 'application/json' } })
         )
       }
+      if (callCount === 2) {
+        return Promise.resolve(
+          new Response(JSON.stringify(mockThemes), { headers: { 'Content-Type': 'application/json' } })
+        )
+      }
       return Promise.resolve(
-        new Response(JSON.stringify(mockThemes), { headers: { 'Content-Type': 'application/json' } })
+        new Response(JSON.stringify(mockAgeRanges), { headers: { 'Content-Type': 'application/json' } })
       )
     })
 
     renderHome()
 
-    // Wait for data to load
     await waitFor(() => {
       expect(screen.getAllByText('The Brave Little Fox').length).toBeGreaterThanOrEqual(1)
     })
 
-    // Theme filter buttons should be present
-    expect(screen.getByText('All')).toBeInTheDocument()
+    // Both theme and age "All" buttons present
+    const allButtons = screen.getAllByRole('button', { name: 'All' })
+    expect(allButtons.length).toBe(2)
     expect(screen.getByRole('button', { name: 'adventure' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'kindness' })).toBeInTheDocument()
 
-    // Click the "adventure" filter -- this hides featured section and filters All Books
+    // Click the "adventure" theme filter
     fireEvent.click(screen.getByRole('button', { name: 'adventure' }))
 
-    // Only the adventure book should be visible; kindness book should be gone
     expect(screen.getAllByText('The Brave Little Fox').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('Kindness Kingdom')).not.toBeInTheDocument()
 
-    // Click "All" to reset the filter
-    fireEvent.click(screen.getByRole('button', { name: 'All' }))
+    // Click theme "All" to reset (first All button is the theme one)
+    const themeAllButton = screen.getAllByRole('button', { name: 'All' })[0]
+    fireEvent.click(themeAllButton)
     expect(screen.getAllByText('The Brave Little Fox').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Kindness Kingdom')).toBeInTheDocument()
   })
