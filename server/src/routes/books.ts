@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import Anthropic from '@anthropic-ai/sdk';
 import prisma from '../db/prisma';
 import { getAuthUser } from './auth';
 import type { Request, Response } from 'express';
@@ -92,6 +93,144 @@ router.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
 
   await prisma.book.delete({ where: { id: req.params.id } });
   res.json({ success: true });
+});
+
+router.post('/:id/revise', async (req: Request<{ id: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const { feedback } = req.body as { feedback?: string };
+  if (!feedback?.trim()) {
+    return res.status(400).json({ error: 'feedback is required' });
+  }
+
+  const book = await prisma.book.findUnique({
+    where: { id: req.params.id },
+    include: { pages: { orderBy: { page_number: 'asc' } } },
+  });
+
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  }
+
+  try {
+    const currentPages = book.pages.map(p => ({
+      page_number: p.page_number,
+      text: p.text,
+      illustrationDescription: p.illustration_description,
+    }));
+
+    const client = new Anthropic({ apiKey });
+
+    const prompt = `You are revising a children's story based on reader feedback. Here is the current story:
+
+Title: ${book.title}
+Theme: ${book.theme}
+Age range: ${book.age_range}
+Description: ${book.description}
+
+Current pages:
+${currentPages.map(p => `Page ${p.page_number}: ${p.text}\n  Illustration: ${p.illustrationDescription}`).join('\n\n')}
+
+Reader feedback: ${feedback}
+
+Revise the story incorporating the feedback. Keep the same number of pages (${book.pages.length}). You may also update the description if the story changed significantly.
+
+Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
+{
+  "description": "Updated 1-2 sentence book description",
+  "pages": [
+    {
+      "text": "The revised story text for this page",
+      "illustrationDescription": "A detailed description of the illustration"
+    }
+  ]
+}`;
+
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const firstBlock = message.content[0];
+    if (firstBlock.type !== 'text') {
+      throw new Error('Unexpected response type from AI');
+    }
+
+    let revised: { description: string; pages: { text: string; illustrationDescription: string }[] };
+    try {
+      revised = JSON.parse(firstBlock.text);
+    } catch {
+      const jsonMatch = firstBlock.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        revised = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('Failed to parse revision from AI response');
+      }
+    }
+
+    await prisma.bookVersion.create({
+      data: {
+        book_id: book.id,
+        version: book.version,
+        pages_json: JSON.stringify(currentPages),
+      },
+    });
+
+    const newVersion = book.version + 1;
+
+    for (let i = 0; i < revised.pages.length; i++) {
+      await prisma.page.update({
+        where: { book_id_page_number: { book_id: book.id, page_number: i + 1 } },
+        data: {
+          text: revised.pages[i].text,
+          illustration_description: revised.pages[i].illustrationDescription,
+        },
+      });
+    }
+
+    const updated = await prisma.book.update({
+      where: { id: book.id },
+      data: { version: newVersion, description: revised.description },
+      include: { pages: { orderBy: { page_number: 'asc' } } },
+    });
+
+    res.json(updated);
+  } catch (err: unknown) {
+    console.error('Revision error:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to revise story. ' + message });
+  }
+});
+
+router.get('/:id/versions', async (req: Request<{ id: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+
+  const versions = await prisma.bookVersion.findMany({
+    where: { book_id: req.params.id },
+    orderBy: { version: 'desc' },
+  });
+
+  res.json(versions.map(v => ({
+    ...v,
+    pages: JSON.parse(v.pages_json),
+  })));
 });
 
 export default router;

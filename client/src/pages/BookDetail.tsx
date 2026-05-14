@@ -1,28 +1,39 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight, Send, Loader2, RefreshCw } from 'lucide-react'
 import { useCart } from '../context/CartContext'
+import { useAuth } from '../context/AuthContext'
 import type { BookWithPages, Page } from '../types'
 
 export default function BookDetail() {
   const { id } = useParams<{ id: string }>()
   const { addToCart } = useCart()
+  const { user } = useAuth()
   const [book, setBook] = useState<BookWithPages | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
   const [loading, setLoading] = useState(true)
   const [added, setAdded] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const [revising, setRevising] = useState(false)
+  const [reviseError, setReviseError] = useState('')
 
-  useEffect(() => {
-    fetch(`/api/books/${id}`)
+  const fetchBook = () => {
+    const headers: Record<string, string> = {}
+    if (user?.token) headers['Authorization'] = `Bearer ${user.token}`
+    fetch(`/api/books/${id}`, { headers })
       .then(r => r.json())
       .then((data: BookWithPages) => { setBook(data); setLoading(false) })
-  }, [id])
+  }
+
+  useEffect(() => { fetchBook() }, [id, user])
 
   if (loading) return <div className="text-center py-20 text-gray-400 text-lg">Loading...</div>
   if (!book) return <div className="text-center py-20 text-gray-400 text-lg">Book not found</div>
 
   const pages: Page[] = book.pages || []
   const page = pages[currentPage]
+  const isOwner = user && book.created_by === user.id
+  const isDraft = book.status === 'draft'
 
   const handleAdd = async () => {
     await addToCart(book.id)
@@ -30,20 +41,69 @@ export default function BookDetail() {
     setTimeout(() => setAdded(false), 2000)
   }
 
+  const handleRevise = async () => {
+    if (!feedback.trim() || !user) return
+    setRevising(true)
+    setReviseError('')
+    try {
+      const res = await fetch(`/api/books/${book.id}/revise`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`,
+        },
+        body: JSON.stringify({ feedback }),
+      })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(data.error || 'Revision failed')
+      }
+      const updated = await res.json() as BookWithPages
+      setBook(updated)
+      setFeedback('')
+      setCurrentPage(0)
+    } catch (err) {
+      setReviseError(err instanceof Error ? err.message : 'Revision failed')
+    } finally {
+      setRevising(false)
+    }
+  }
+
+  const handlePublish = async () => {
+    if (!user) return
+    const res = await fetch(`/api/books/${book.id}/publish`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${user.token}` },
+    })
+    if (res.ok) {
+      const updated = await res.json() as BookWithPages
+      setBook({ ...book, ...updated })
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <Link to="/" className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 mb-6 no-underline font-semibold">
-        <ArrowLeft size={18} /> Back to catalog
+      <Link to={isOwner ? '/my-books' : '/'} className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 mb-6 no-underline font-semibold">
+        <ArrowLeft size={18} /> {isOwner ? 'Back to My Books' : 'Back to catalog'}
       </Link>
 
       {/* Book Header */}
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg overflow-hidden mb-8 transition-colors">
         <div className="md:flex">
           <div
-            className="md:w-1/3 h-64 md:h-auto flex items-center justify-center text-8xl"
+            className="md:w-1/3 h-64 md:h-auto flex items-center justify-center text-8xl relative"
             style={{ backgroundColor: book.cover_color + '20' }}
           >
             <span className="drop-shadow-xl">{book.cover_emoji}</span>
+            {isOwner && (
+              <span className={`absolute top-4 right-4 text-xs font-bold px-2.5 py-1 rounded-full ${
+                isDraft
+                  ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'
+                  : 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
+              }`}>
+                {isDraft ? 'Draft' : 'Published'} &middot; v{book.version}
+              </span>
+            )}
           </div>
           <div className="p-8 md:w-2/3">
             <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 font-display mb-2">{book.title}</h1>
@@ -62,19 +122,32 @@ export default function BookDetail() {
                 </span>
               ) : null}
             </div>
-            <div className="flex items-center gap-4">
-              <span className="text-3xl font-bold text-gray-800 dark:text-gray-100">${book.price.toFixed(2)}</span>
-              <button
-                onClick={() => void handleAdd()}
-                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all cursor-pointer ${
-                  added
-                    ? 'bg-green-500 text-white'
-                    : 'bg-amber-500 hover:bg-amber-600 text-white'
-                }`}
-              >
-                <ShoppingCart size={18} />
-                {added ? 'Added!' : 'Add to Cart'}
-              </button>
+            <div className="flex items-center gap-3">
+              {isDraft && isOwner && (
+                <button
+                  onClick={() => void handlePublish()}
+                  className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold bg-green-500 hover:bg-green-600 text-white transition-colors cursor-pointer"
+                >
+                  <Send size={16} />
+                  Publish
+                </button>
+              )}
+              {!isDraft && (
+                <>
+                  <span className="text-3xl font-bold text-gray-800 dark:text-gray-100">${book.price.toFixed(2)}</span>
+                  <button
+                    onClick={() => void handleAdd()}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all cursor-pointer ${
+                      added
+                        ? 'bg-green-500 text-white'
+                        : 'bg-amber-500 hover:bg-amber-600 text-white'
+                    }`}
+                  >
+                    <ShoppingCart size={18} />
+                    {added ? 'Added!' : 'Add to Cart'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -82,7 +155,7 @@ export default function BookDetail() {
 
       {/* Page Reader */}
       {pages.length > 0 && page && (
-        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg p-8 transition-colors">
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg p-8 transition-colors mb-8">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 font-display mb-6">Read the Story</h2>
 
           <div className="bg-amber-50 dark:bg-gray-700/50 rounded-2xl p-8 min-h-[300px] flex flex-col justify-between transition-colors">
@@ -128,6 +201,57 @@ export default function BookDetail() {
                 Next <ChevronRight size={18} />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Panel — only for draft books owned by user */}
+      {isOwner && isDraft && (
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg p-8 transition-colors">
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 font-display mb-2">
+            <RefreshCw size={22} className="inline mr-2 text-purple-500" />
+            Revise Your Story
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">
+            Read through the story above, then describe what you'd like changed. Our AI author will create a revised version.
+          </p>
+
+          <textarea
+            value={feedback}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFeedback(e.target.value)}
+            placeholder="e.g., Make the ending happier, change the dragon to a unicorn, page 3 is too scary for young kids..."
+            disabled={revising}
+            className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:border-purple-400 focus:outline-none text-base h-28 resize-none placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50"
+            maxLength={1000}
+          />
+
+          {reviseError && (
+            <div className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 p-3 rounded-xl mt-3 text-sm">
+              {reviseError}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mt-4">
+            <span className="text-sm text-gray-400 dark:text-gray-500">
+              {feedback.length}/1000
+            </span>
+            <button
+              onClick={() => void handleRevise()}
+              disabled={revising || !feedback.trim()}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-lg transition-shadow cursor-pointer disabled:opacity-40 disabled:cursor-default"
+            >
+              {revising ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  Revising...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={18} />
+                  Revise Story
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}

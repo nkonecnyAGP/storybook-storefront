@@ -19,6 +19,7 @@ export interface Book {
   is_user_created: number;
   status: string;
   version: number;
+  created_by: string | null;
   created_at?: string;
 }
 
