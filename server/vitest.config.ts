@@ -6,5 +6,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/__tests__/**/*.test.ts'],
     testTimeout: 10000,
+    maxWorkers: 1,
+    minWorkers: 1,
+    fileParallelism: false,
+    globalSetup: ['src/__tests__/globalSetup.ts'],
   },
 });

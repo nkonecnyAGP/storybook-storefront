@@ -1,33 +1,32 @@
 import { Router } from 'express';
-import { getStore, save } from '../db/init';
+import prisma from '../db/prisma';
 import type { Request, Response } from 'express';
 
 const router = Router();
 
-router.get('/:sessionId', (req: Request, res: Response) => {
-  const { cartItems, books } = getStore();
-  const items = cartItems
-    .filter((ci) => ci.session_id === req.params.sessionId)
-    .map((ci) => {
-      const book = books.find((b) => b.id === ci.book_id);
-      return {
-        id: ci.id,
-        quantity: ci.quantity,
-        book_id: ci.book_id,
-        title: book?.title,
-        price: book?.price,
-        cover_emoji: book?.cover_emoji,
-        cover_color: book?.cover_color,
-        author: book?.author,
-      };
-    });
+router.get('/:sessionId', async (req: Request<{ sessionId: string }>, res: Response) => {
+  const { sessionId } = req.params;
+  const items = await prisma.cartItem.findMany({
+    where: { session_id: sessionId },
+    include: { book: true },
+  });
 
-  const total = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
-  res.json({ items, total });
+  const mapped = items.map(item => ({
+    id: item.id,
+    book_id: item.book_id,
+    quantity: item.quantity,
+    title: item.book.title,
+    price: item.book.price,
+    cover_emoji: item.book.cover_emoji,
+    cover_color: item.book.cover_color,
+    author: item.book.author,
+  }));
+
+  const total = mapped.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  res.json({ items: mapped, total });
 });
 
-router.post('/:sessionId/items', (req: Request<{ sessionId: string }>, res: Response) => {
-  const store = getStore();
+router.post('/:sessionId/items', async (req: Request<{ sessionId: string }>, res: Response) => {
   const { bookId, quantity = 1 } = req.body as { bookId?: string; quantity?: number };
   const { sessionId } = req.params;
 
@@ -35,54 +34,65 @@ router.post('/:sessionId/items', (req: Request<{ sessionId: string }>, res: Resp
     return res.status(400).json({ error: 'bookId is required' });
   }
 
-  if (!store.books.find((b) => b.id === bookId)) {
+  const book = await prisma.book.findUnique({ where: { id: bookId } });
+  if (!book) {
     return res.status(404).json({ error: 'Book not found' });
   }
 
-  const existing = store.cartItems.find((ci) => ci.session_id === sessionId && ci.book_id === bookId);
+  const existing = await prisma.cartItem.findUnique({
+    where: { session_id_book_id: { session_id: sessionId, book_id: bookId } },
+  });
 
   if (existing) {
-    existing.quantity += quantity;
+    await prisma.cartItem.update({
+      where: { id: existing.id },
+      data: { quantity: existing.quantity + quantity },
+    });
   } else {
-    store.cartItems.push({
-      id: store.cartItems.length + 1,
-      session_id: sessionId,
-      book_id: bookId,
-      quantity,
+    await prisma.cartItem.create({
+      data: { session_id: sessionId, book_id: bookId, quantity },
     });
   }
 
-  save();
   res.json({ success: true });
 });
 
-router.put('/:sessionId/items/:bookId', (req: Request, res: Response) => {
-  const store = getStore();
+router.put('/:sessionId/items/:bookId', async (req: Request<{ sessionId: string; bookId: string }>, res: Response) => {
   const { quantity } = req.body as { quantity: number };
   const { sessionId, bookId } = req.params;
 
   if (quantity <= 0) {
-    store.cartItems = store.cartItems.filter((ci) => !(ci.session_id === sessionId && ci.book_id === bookId));
+    await prisma.cartItem.deleteMany({
+      where: { session_id: sessionId, book_id: bookId },
+    });
   } else {
-    const item = store.cartItems.find((ci) => ci.session_id === sessionId && ci.book_id === bookId);
-    if (item) item.quantity = quantity;
+    const item = await prisma.cartItem.findUnique({
+      where: { session_id_book_id: { session_id: sessionId, book_id: bookId } },
+    });
+    if (item) {
+      await prisma.cartItem.update({
+        where: { id: item.id },
+        data: { quantity },
+      });
+    }
   }
 
-  save();
   res.json({ success: true });
 });
 
-router.delete('/:sessionId/items/:bookId', (req: Request, res: Response) => {
-  const store = getStore();
-  store.cartItems = store.cartItems.filter((ci) => !(ci.session_id === req.params.sessionId && ci.book_id === req.params.bookId));
-  save();
+router.delete('/:sessionId/items/:bookId', async (req: Request<{ sessionId: string; bookId: string }>, res: Response) => {
+  const { sessionId, bookId } = req.params;
+  await prisma.cartItem.deleteMany({
+    where: { session_id: sessionId, book_id: bookId },
+  });
   res.json({ success: true });
 });
 
-router.delete('/:sessionId', (req: Request, res: Response) => {
-  const store = getStore();
-  store.cartItems = store.cartItems.filter((ci) => ci.session_id !== req.params.sessionId);
-  save();
+router.delete('/:sessionId', async (req: Request<{ sessionId: string }>, res: Response) => {
+  const { sessionId } = req.params;
+  await prisma.cartItem.deleteMany({
+    where: { session_id: sessionId },
+  });
   res.json({ success: true });
 });
 

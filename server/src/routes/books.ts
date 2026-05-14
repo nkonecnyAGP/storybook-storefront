@@ -1,54 +1,56 @@
 import { Router } from 'express';
-import { getStore } from '../db/init';
+import prisma from '../db/prisma';
 import { getAuthUser } from './auth';
 import type { Request, Response } from 'express';
-import type { Book } from '../types';
 
 const router = Router();
 
-router.get('/', (req: Request, res: Response) => {
-  const { books } = getStore();
+router.get('/', async (req: Request, res: Response) => {
   const { theme, age_range, featured } = req.query;
 
-  let result: Book[] = [...books];
+  const where: Record<string, unknown> = {};
+  if (theme) where.theme = theme;
+  if (age_range) where.age_range = age_range;
+  if (featured === 'true') where.is_featured = true;
 
-  if (theme) result = result.filter((b) => b.theme === theme);
-  if (age_range) result = result.filter((b) => b.age_range === age_range);
-  if (featured === 'true') result = result.filter((b) => b.is_featured);
+  const books = await prisma.book.findMany({
+    where,
+    orderBy: { is_featured: 'desc' },
+  });
 
-  result.sort((a, b) => (b.is_featured || 0) - (a.is_featured || 0));
-  res.json(result);
+  res.json(books);
 });
 
-router.get('/mine', (req: Request, res: Response) => {
-  const user = getAuthUser(req);
+router.get('/mine', async (req: Request, res: Response) => {
+  const user = await getAuthUser(req);
   if (!user) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
-  const { books } = getStore();
-  const myBooks = books.filter(b => b.created_by === user.id);
-  res.json(myBooks);
+  const books = await prisma.book.findMany({
+    where: { created_by: user.id },
+  });
+  res.json(books);
 });
 
-router.get('/themes', (_req: Request, res: Response) => {
-  const { books } = getStore();
-  const themes: string[] = [...new Set(books.map((b) => b.theme))].sort();
+router.get('/themes', async (_req: Request, res: Response) => {
+  const books = await prisma.book.findMany({ select: { theme: true } });
+  const themes = [...new Set(books.map(b => b.theme))].sort();
   res.json(themes);
 });
 
-router.get('/:id', (req: Request, res: Response) => {
-  const { books, pages } = getStore();
-  const book = books.find((b) => b.id === req.params.id);
+router.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
+  const book = await prisma.book.findUnique({
+    where: { id: req.params.id },
+    include: {
+      pages: { orderBy: { page_number: 'asc' } },
+    },
+  });
 
   if (!book) {
     return res.status(404).json({ error: 'Book not found' });
   }
 
-  const bookPages = pages
-    .filter((p) => p.book_id === req.params.id)
-    .sort((a, b) => a.page_number - b.page_number);
-
-  res.json({ ...book, pages: bookPages });
+  res.json(book);
 });
 
 export default router;

@@ -1,72 +1,65 @@
 import { Router } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { getStore, save } from '../db/init';
+import prisma from '../db/prisma';
 import type { Request, Response } from 'express';
-
-interface CreateOrderBody {
-  sessionId: string;
-  customerName: string;
-  customerEmail: string;
-}
 
 const router = Router();
 
-router.post('/', (req: Request, res: Response) => {
-  const store = getStore();
-  const { sessionId, customerName, customerEmail } = req.body as CreateOrderBody;
+router.post('/', async (req: Request, res: Response) => {
+  const { sessionId, customerName, customerEmail } = req.body as {
+    sessionId?: string;
+    customerName?: string;
+    customerEmail?: string;
+  };
 
   if (!sessionId || !customerName || !customerEmail) {
     return res.status(400).json({ error: 'sessionId, customerName, and customerEmail are required' });
   }
 
-  const items = store.cartItems
-    .filter((ci) => ci.session_id === sessionId)
-    .map((ci) => {
-      const book = store.books.find((b) => b.id === ci.book_id);
-      return { book_id: ci.book_id, title: book?.title ?? '', quantity: ci.quantity, price: book?.price || 0 };
-    });
+  const cartItems = await prisma.cartItem.findMany({
+    where: { session_id: sessionId },
+    include: { book: true },
+  });
 
-  if (items.length === 0) {
+  if (cartItems.length === 0) {
     return res.status(400).json({ error: 'Cart is empty' });
   }
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const orderId = uuidv4();
+  const total = cartItems.reduce((sum, item) => sum + item.book.price * item.quantity, 0);
 
-  store.orders.push({
-    id: orderId,
-    session_id: sessionId,
-    customer_name: customerName,
-    customer_email: customerEmail,
-    total,
-    status: 'confirmed',
-    created_at: new Date().toISOString(),
+  const order = await prisma.order.create({
+    data: {
+      session_id: sessionId,
+      customer_name: customerName,
+      customer_email: customerEmail,
+      total,
+      items: {
+        create: cartItems.map(item => ({
+          book_id: item.book_id,
+          title: item.book.title,
+          quantity: item.quantity,
+          price: item.book.price,
+        })),
+      },
+    },
+    include: { items: true },
   });
 
-  for (const item of items) {
-    store.orderItems.push({
-      id: store.orderItems.length + 1,
-      order_id: orderId,
-      ...item,
-    });
-  }
+  await prisma.cartItem.deleteMany({ where: { session_id: sessionId } });
 
-  store.cartItems = store.cartItems.filter((ci) => ci.session_id !== sessionId);
-  save();
-
-  res.json({ id: orderId, customerName, customerEmail, total, items, status: 'confirmed' });
+  res.json(order);
 });
 
-router.get('/:id', (req: Request, res: Response) => {
-  const store = getStore();
-  const order = store.orders.find((o) => o.id === req.params.id);
+router.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
+  const order = await prisma.order.findUnique({
+    where: { id: req.params.id },
+    include: { items: true },
+  });
 
   if (!order) {
     return res.status(404).json({ error: 'Order not found' });
   }
 
-  const items = store.orderItems.filter((oi) => oi.order_id === req.params.id);
-  res.json({ ...order, items });
+  res.json(order);
 });
 
 export default router;

@@ -1,19 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { createTestApp } from '../../__tests__/setup';
-
-// Mock fs so tests never read/write a real data.json file
-vi.mock('fs', () => ({
-  readFileSync: vi.fn(() => '{"books":[],"pages":[],"cartItems":[],"orders":[],"orderItems":[]}'),
-  writeFileSync: vi.fn(),
-  existsSync: vi.fn(() => false),
-}));
+import { createTestApp, resetDatabase } from '../../__tests__/setup';
 
 describe('Books API routes', () => {
   let app: Express;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetDatabase();
     app = createTestApp();
   });
 
@@ -38,9 +32,8 @@ describe('Books API routes', () => {
 
     it('sorts featured books first', async () => {
       const res = await request(app).get('/api/books');
-      const featured = res.body.filter((b: { is_featured: number }) => b.is_featured);
-      const nonFeatured = res.body.filter((b: { is_featured: number }) => !b.is_featured);
-      // Featured books should appear before non-featured books
+      const featured = res.body.filter((b: { is_featured: boolean }) => b.is_featured);
+      const nonFeatured = res.body.filter((b: { is_featured: boolean }) => !b.is_featured);
       const lastFeaturedIdx = res.body.indexOf(featured[featured.length - 1]);
       const firstNonFeaturedIdx = res.body.indexOf(nonFeatured[0]);
       expect(lastFeaturedIdx).toBeLessThan(firstNonFeaturedIdx);
@@ -69,11 +62,7 @@ describe('Books API routes', () => {
       const res = await request(app).get('/api/books/themes');
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
-
-      // Should have 6 unique themes (fantasy, adventure, friendship, humor, imagination, nature)
       expect(res.body).toHaveLength(6);
-
-      // Should be sorted
       const sorted = [...res.body].sort();
       expect(res.body).toEqual(sorted);
     });

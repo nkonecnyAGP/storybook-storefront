@@ -1,9 +1,8 @@
 import { Router } from 'express';
 import { createHash, randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { getStore, save } from '../db/init';
+import prisma from '../db/prisma';
 import type { Request, Response } from 'express';
-import type { User } from '../types';
 
 const router = Router();
 
@@ -19,15 +18,14 @@ function verifyPassword(password: string, stored: string): boolean {
   return check === hash;
 }
 
-function getAuthUser(req: Request): User | null {
+export async function getAuthUser(req: Request) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) return null;
   const token = header.slice(7);
-  const store = getStore();
-  return store.users.find(u => u.token === token) ?? null;
+  return prisma.user.findFirst({ where: { token } });
 }
 
-router.post('/register', (req: Request, res: Response) => {
+router.post('/register', async (req: Request, res: Response) => {
   const { email, name, password } = req.body as { email?: string; name?: string; password?: string };
 
   if (!email || !name || !password) {
@@ -38,64 +36,57 @@ router.post('/register', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Password must be at least 4 characters' });
   }
 
-  const store = getStore();
-  if (store.users.find(u => u.email === email)) {
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
     return res.status(409).json({ error: 'An account with this email already exists' });
   }
 
   const token = uuidv4();
-  const user: User = {
-    id: uuidv4(),
-    email,
-    name,
-    password_hash: hashPassword(password),
-    token,
-    created_at: new Date().toISOString(),
-  };
-
-  store.users.push(user);
-  save();
+  const user = await prisma.user.create({
+    data: {
+      email,
+      name,
+      password_hash: hashPassword(password),
+      token,
+    },
+  });
 
   res.status(201).json({ id: user.id, email: user.email, name: user.name, token });
 });
 
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
     return res.status(400).json({ error: 'email and password are required' });
   }
 
-  const store = getStore();
-  const user = store.users.find(u => u.email === email);
+  const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user || !verifyPassword(password, user.password_hash)) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
 
   const token = uuidv4();
-  user.token = token;
-  save();
+  await prisma.user.update({ where: { id: user.id }, data: { token } });
 
   res.json({ id: user.id, email: user.email, name: user.name, token });
 });
 
-router.post('/logout', (req: Request, res: Response) => {
-  const user = getAuthUser(req);
+router.post('/logout', async (req: Request, res: Response) => {
+  const user = await getAuthUser(req);
   if (user) {
-    user.token = null;
-    save();
+    await prisma.user.update({ where: { id: user.id }, data: { token: null } });
   }
   res.json({ ok: true });
 });
 
-router.get('/me', (req: Request, res: Response) => {
-  const user = getAuthUser(req);
+router.get('/me', async (req: Request, res: Response) => {
+  const user = await getAuthUser(req);
   if (!user) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   res.json({ id: user.id, email: user.email, name: user.name });
 });
 
-export { getAuthUser };
 export default router;

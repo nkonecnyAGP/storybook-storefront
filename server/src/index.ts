@@ -4,7 +4,6 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { initDb } from './db/init';
 import authRouter from './routes/auth';
 import booksRouter from './routes/books';
 import generateRouter from './routes/generate';
@@ -20,8 +19,6 @@ const PORT: number = parseInt(process.env.PORT || '3001', 10);
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-
-initDb();
 
 app.use('/api/auth', authRouter);
 app.use('/api/books', booksRouter);

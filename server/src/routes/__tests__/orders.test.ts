@@ -1,27 +1,20 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { createTestApp } from '../../__tests__/setup';
-
-// Mock fs so tests never read/write a real data.json file
-vi.mock('fs', () => ({
-  readFileSync: vi.fn(() => '{"books":[],"pages":[],"cartItems":[],"orders":[],"orderItems":[]}'),
-  writeFileSync: vi.fn(),
-  existsSync: vi.fn(() => false),
-}));
+import { createTestApp, resetDatabase } from '../../__tests__/setup';
 
 const TEST_SESSION = 'test-session-orders';
 
 describe('Orders API routes', () => {
   let app: Express;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetDatabase();
     app = createTestApp();
   });
 
   describe('POST /api/orders', () => {
     it('creates an order from cart items and clears cart', async () => {
-      // Add items to cart
       await request(app)
         .post(`/api/cart/${TEST_SESSION}/items`)
         .send({ bookId: 'luna-star-garden', quantity: 1 });
@@ -30,7 +23,6 @@ describe('Orders API routes', () => {
         .post(`/api/cart/${TEST_SESSION}/items`)
         .send({ bookId: 'dinosaur-bakery', quantity: 2 });
 
-      // Create order
       const res = await request(app)
         .post('/api/orders')
         .send({
@@ -41,16 +33,14 @@ describe('Orders API routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBeDefined();
-      expect(res.body.customerName).toBe('Test Customer');
-      expect(res.body.customerEmail).toBe('test@example.com');
+      expect(res.body.customer_name).toBe('Test Customer');
+      expect(res.body.customer_email).toBe('test@example.com');
       expect(res.body.status).toBe('confirmed');
       expect(res.body.items).toHaveLength(2);
 
-      // Total should be luna (19.99 x 1) + dino (17.99 x 2)
       const expectedTotal = 19.99 + 17.99 * 2;
       expect(res.body.total).toBeCloseTo(expectedTotal, 2);
 
-      // Cart should be cleared
       const cartRes = await request(app).get(`/api/cart/${TEST_SESSION}`);
       expect(cartRes.body.items).toHaveLength(0);
     });
@@ -80,7 +70,6 @@ describe('Orders API routes', () => {
 
   describe('GET /api/orders/:id', () => {
     it('returns order with items', async () => {
-      // Add item to cart and create order
       await request(app)
         .post(`/api/cart/${TEST_SESSION}/items`)
         .send({ bookId: 'luna-star-garden', quantity: 1 });
@@ -95,7 +84,6 @@ describe('Orders API routes', () => {
 
       const orderId = createRes.body.id;
 
-      // Fetch the order
       const res = await request(app).get(`/api/orders/${orderId}`);
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(orderId);

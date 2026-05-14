@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import { v4 as uuidv4 } from 'uuid';
-import { getStore, save } from '../db/init';
+import prisma from '../db/prisma';
 import { getAuthUser } from './auth';
 import type { Request, Response } from 'express';
 
@@ -87,49 +86,33 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
       }
     }
 
-    const bookId = uuidv4();
-    const store = getStore();
-    const user = getAuthUser(req);
+    const user = await getAuthUser(req);
 
-    store.books.push({
-      id: bookId,
-      title: story.title,
-      author: user ? user.name : 'AI Storybook',
-      description: story.description,
-      theme,
-      age_range: ageRange,
-      cover_emoji: story.coverEmoji,
-      cover_color: story.coverColor,
-      price: 24.99,
-      is_featured: 0,
-      is_user_created: 1,
-      created_by: user ? user.id : null,
-      created_at: new Date().toISOString(),
+    const book = await prisma.book.create({
+      data: {
+        title: story.title,
+        author: user ? user.name : 'AI Storybook',
+        description: story.description,
+        theme,
+        age_range: ageRange,
+        cover_emoji: story.coverEmoji,
+        cover_color: story.coverColor,
+        price: 24.99,
+        is_featured: false,
+        is_user_created: true,
+        created_by: user?.id ?? null,
+        pages: {
+          create: story.pages.map((page, i) => ({
+            page_number: i + 1,
+            text: page.text,
+            illustration_description: page.illustrationDescription,
+          })),
+        },
+      },
+      include: { pages: { orderBy: { page_number: 'asc' } } },
     });
 
-    const newPages = story.pages.map((page, i) => ({
-      id: store.pages.length + i + 1,
-      book_id: bookId,
-      page_number: i + 1,
-      text: page.text,
-      illustration_description: page.illustrationDescription,
-    }));
-
-    store.pages.push(...newPages);
-    save();
-
-    res.json({
-      id: bookId,
-      title: story.title,
-      description: story.description,
-      theme,
-      age_range: ageRange,
-      cover_emoji: story.coverEmoji,
-      cover_color: story.coverColor,
-      price: 24.99,
-      is_user_created: 1,
-      pages: newPages,
-    });
+    res.json(book);
   } catch (err: unknown) {
     console.error('Generation error:', err);
     const message = err instanceof Error ? err.message : String(err);

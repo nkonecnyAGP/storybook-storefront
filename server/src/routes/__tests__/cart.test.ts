@@ -1,21 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { createTestApp } from '../../__tests__/setup';
-
-// Mock fs so tests never read/write a real data.json file
-vi.mock('fs', () => ({
-  readFileSync: vi.fn(() => '{"books":[],"pages":[],"cartItems":[],"orders":[],"orderItems":[]}'),
-  writeFileSync: vi.fn(),
-  existsSync: vi.fn(() => false),
-}));
+import { createTestApp, resetDatabase } from '../../__tests__/setup';
 
 const TEST_SESSION = 'test-session-123';
 
 describe('Cart API routes', () => {
   let app: Express;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetDatabase();
     app = createTestApp();
   });
 
@@ -71,7 +65,6 @@ describe('Cart API routes', () => {
     });
 
     it('returns cart with items and total', async () => {
-      // Add two different books
       await request(app)
         .post(`/api/cart/${TEST_SESSION}/items`)
         .send({ bookId: 'luna-star-garden', quantity: 1 });
@@ -84,7 +77,6 @@ describe('Cart API routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.items).toHaveLength(2);
 
-      // luna-star-garden is $19.99 x 1 = 19.99, dinosaur-bakery is $17.99 x 2 = 35.98
       const expectedTotal = 19.99 + 17.99 * 2;
       expect(res.body.total).toBeCloseTo(expectedTotal, 2);
     });
