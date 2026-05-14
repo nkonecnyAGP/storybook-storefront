@@ -14,7 +14,7 @@ import uploadsRouter from './routes/uploads';
 
 import type { Request, Response } from 'express';
 
-dotenv.config({ path: '../.env' });
+dotenv.config({ path: '../.env', override: true });
 
 const app = express();
 const PORT: number = parseInt(process.env.PORT || '3001', 10);
