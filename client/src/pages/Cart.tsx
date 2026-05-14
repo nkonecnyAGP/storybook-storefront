@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Trash2, Plus, Minus, ShoppingBag } from 'lucide-react'
-import { useCart } from '../context/CartContext.jsx'
+import { useCart } from '../context/CartContext'
 
 export default function Cart() {
   const { items, total, updateQuantity, removeFromCart } = useCart()
@@ -42,14 +42,14 @@ export default function Cart() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => updateQuantity(item.book_id, item.quantity - 1)}
+                onClick={() => void updateQuantity(item.book_id, item.quantity - 1)}
                 className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center cursor-pointer transition-colors text-gray-700 dark:text-gray-300"
               >
                 <Minus size={14} />
               </button>
               <span className="w-8 text-center font-bold text-gray-800 dark:text-gray-100">{item.quantity}</span>
               <button
-                onClick={() => updateQuantity(item.book_id, item.quantity + 1)}
+                onClick={() => void updateQuantity(item.book_id, item.quantity + 1)}
                 className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center cursor-pointer transition-colors text-gray-700 dark:text-gray-300"
               >
                 <Plus size={14} />
@@ -59,7 +59,7 @@ export default function Cart() {
               <div className="font-bold text-gray-800 dark:text-gray-100">${(item.price * item.quantity).toFixed(2)}</div>
             </div>
             <button
-              onClick={() => removeFromCart(item.book_id)}
+              onClick={() => void removeFromCart(item.book_id)}
               className="text-gray-400 hover:text-red-500 cursor-pointer transition-colors"
             >
               <Trash2 size={18} />

@@ -1,12 +1,31 @@
 import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { v4 as uuidv4 } from 'uuid';
-import { getStore, save } from '../db/init.js';
+import { getStore, save } from '../db/init';
+import type { Request, Response } from 'express';
+
+interface GenerateRequestBody {
+  theme: string;
+  characterName: string;
+  ageRange: string;
+  additionalDetails?: string;
+}
+
+interface GeneratedStory {
+  title: string;
+  description: string;
+  coverEmoji: string;
+  coverColor: string;
+  pages: {
+    text: string;
+    illustrationDescription: string;
+  }[];
+}
 
 const router = Router();
 
-router.post('/', async (req, res) => {
-  const { theme, characterName, ageRange, additionalDetails } = req.body;
+router.post('/', async (req: Request, res: Response) => {
+  const { theme, characterName, ageRange, additionalDetails } = req.body as GenerateRequestBody;
 
   if (!theme || !characterName || !ageRange) {
     return res.status(400).json({ error: 'theme, characterName, and ageRange are required' });
@@ -49,14 +68,19 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const content = message.content[0].text;
-    let story;
+    const firstBlock = message.content[0];
+    if (firstBlock.type !== 'text') {
+      throw new Error('Unexpected response type from AI');
+    }
+    const content: string = firstBlock.text;
+
+    let story: GeneratedStory;
     try {
-      story = JSON.parse(content);
+      story = JSON.parse(content) as GeneratedStory;
     } catch {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        story = JSON.parse(jsonMatch[0]);
+        story = JSON.parse(jsonMatch[0]) as GeneratedStory;
       } else {
         throw new Error('Failed to parse story from AI response');
       }
@@ -103,9 +127,10 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
       is_user_created: 1,
       pages: newPages,
     });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('Generation error:', err);
-    res.status(500).json({ error: 'Failed to generate story. ' + err.message });
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to generate story. ' + message });
   }
 });
 

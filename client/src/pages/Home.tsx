@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Sparkles } from 'lucide-react'
-import BookCard from '../components/BookCard.jsx'
+import BookCard from '../components/BookCard'
+import type { Book } from '../types'
 
 export default function Home() {
-  const [books, setBooks] = useState([])
-  const [themes, setThemes] = useState([])
-  const [activeTheme, setActiveTheme] = useState(null)
+  const [books, setBooks] = useState<Book[]>([])
+  const [themes, setThemes] = useState<string[]>([])
+  const [activeTheme, setActiveTheme] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/books').then(r => r.json()),
-      fetch('/api/books/themes').then(r => r.json()),
+      fetch('/api/books').then(r => r.json()) as Promise<Book[]>,
+      fetch('/api/books/themes').then(r => r.json()) as Promise<string[]>,
     ]).then(([booksData, themesData]) => {
       setBooks(booksData)
       setThemes(themesData)

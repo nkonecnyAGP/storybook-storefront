@@ -2,7 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Sparkles, Wand2, Loader2 } from 'lucide-react'
 
-const THEMES = [
+interface ThemeOption {
+  value: string;
+  label: string;
+  emoji: string;
+}
+
+const THEMES: ThemeOption[] = [
   { value: 'adventure', label: 'Adventure', emoji: '\u{1F3D4}\u{FE0F}' },
   { value: 'fantasy', label: 'Fantasy', emoji: '\u{1FA84}' },
   { value: 'friendship', label: 'Friendship', emoji: '\u{1F49B}' },
@@ -13,7 +19,7 @@ const THEMES = [
   { value: 'space', label: 'Space', emoji: '\u{1F680}' },
 ]
 
-const AGE_RANGES = ['2-4', '3-6', '4-7', '5-9', '6-10']
+const AGE_RANGES: string[] = ['2-4', '3-6', '4-7', '5-9', '6-10']
 
 export default function CreateBook() {
   const navigate = useNavigate()
@@ -25,13 +31,13 @@ export default function CreateBook() {
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
 
-  const canProceed = () => {
+  const canProceed = (): boolean => {
     if (step === 1) return theme !== ''
     if (step === 2) return characterName.trim() !== '' && ageRange !== ''
     return true
   }
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (): Promise<void> => {
     setGenerating(true)
     setError('')
     try {
@@ -41,13 +47,13 @@ export default function CreateBook() {
         body: JSON.stringify({ theme, characterName, ageRange, additionalDetails }),
       })
       if (!res.ok) {
-        const data = await res.json()
+        const data = await res.json() as { error?: string }
         throw new Error(data.error || 'Generation failed')
       }
-      const book = await res.json()
+      const book = await res.json() as { id: string }
       navigate(`/book/${book.id}`)
     } catch (err) {
-      setError(err.message)
+      setError(err instanceof Error ? err.message : 'Generation failed')
       setGenerating(false)
     }
   }
@@ -122,7 +128,7 @@ export default function CreateBook() {
                 <input
                   type="text"
                   value={characterName}
-                  onChange={e => setCharacterName(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCharacterName(e.target.value)}
                   placeholder="e.g., Luna, Captain Bear, Zara..."
                   className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:border-purple-400 focus:outline-none text-lg placeholder-gray-400 dark:placeholder-gray-500"
                   maxLength={50}
@@ -156,7 +162,7 @@ export default function CreateBook() {
             <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 font-display mb-4">Any Special Requests?</h2>
             <textarea
               value={additionalDetails}
-              onChange={e => setAdditionalDetails(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAdditionalDetails(e.target.value)}
               placeholder="Optional: Add any special details, like the character's personality, a lesson you want in the story, or a specific setting..."
               className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:border-purple-400 focus:outline-none text-base h-32 resize-none placeholder-gray-400 dark:placeholder-gray-500"
               maxLength={500}
@@ -201,7 +207,7 @@ export default function CreateBook() {
             </button>
           ) : (
             <button
-              onClick={handleGenerate}
+              onClick={() => void handleGenerate()}
               className="flex items-center gap-2 px-8 py-3 rounded-xl font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-lg transition-shadow cursor-pointer"
             >
               <Wand2 size={18} />

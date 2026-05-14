@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useCart } from '../context/CartContext.jsx'
+import { useCart } from '../context/CartContext'
+import type { BookWithPages, Page } from '../types'
 
 export default function BookDetail() {
-  const { id } = useParams()
+  const { id } = useParams<{ id: string }>()
   const { addToCart } = useCart()
-  const [book, setBook] = useState(null)
+  const [book, setBook] = useState<BookWithPages | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
   const [loading, setLoading] = useState(true)
   const [added, setAdded] = useState(false)
@@ -14,13 +15,13 @@ export default function BookDetail() {
   useEffect(() => {
     fetch(`/api/books/${id}`)
       .then(r => r.json())
-      .then(data => { setBook(data); setLoading(false) })
+      .then((data: BookWithPages) => { setBook(data); setLoading(false) })
   }, [id])
 
   if (loading) return <div className="text-center py-20 text-gray-400 text-lg">Loading...</div>
   if (!book) return <div className="text-center py-20 text-gray-400 text-lg">Book not found</div>
 
-  const pages = book.pages || []
+  const pages: Page[] = book.pages || []
   const page = pages[currentPage]
 
   const handleAdd = async () => {
@@ -64,7 +65,7 @@ export default function BookDetail() {
             <div className="flex items-center gap-4">
               <span className="text-3xl font-bold text-gray-800 dark:text-gray-100">${book.price.toFixed(2)}</span>
               <button
-                onClick={handleAdd}
+                onClick={() => void handleAdd()}
                 className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all cursor-pointer ${
                   added
                     ? 'bg-green-500 text-white'
@@ -80,7 +81,7 @@ export default function BookDetail() {
       </div>
 
       {/* Page Reader */}
-      {pages.length > 0 && (
+      {pages.length > 0 && page && (
         <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg p-8 transition-colors">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 font-display mb-6">Read the Story</h2>
 

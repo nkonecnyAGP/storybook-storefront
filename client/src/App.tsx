@@ -1,11 +1,11 @@
 import { Routes, Route } from 'react-router-dom'
-import Navbar from './components/Navbar.jsx'
-import Home from './pages/Home.jsx'
-import BookDetail from './pages/BookDetail.jsx'
-import CreateBook from './pages/CreateBook.jsx'
-import Cart from './pages/Cart.jsx'
-import Checkout from './pages/Checkout.jsx'
-import OrderConfirmation from './pages/OrderConfirmation.jsx'
+import Navbar from './components/Navbar'
+import Home from './pages/Home'
+import BookDetail from './pages/BookDetail'
+import CreateBook from './pages/CreateBook'
+import Cart from './pages/Cart'
+import Checkout from './pages/Checkout'
+import OrderConfirmation from './pages/OrderConfirmation'
 
 function App() {
   return (

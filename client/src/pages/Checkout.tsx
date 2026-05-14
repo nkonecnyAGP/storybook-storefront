@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, CreditCard, Loader2 } from 'lucide-react'
-import { useCart } from '../context/CartContext.jsx'
+import { useCart } from '../context/CartContext'
 
 export default function Checkout() {
   const { items, total, sessionId } = useCart()
@@ -22,7 +22,7 @@ export default function Checkout() {
     )
   }
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
     setSubmitting(true)
     setError('')
@@ -33,13 +33,13 @@ export default function Checkout() {
         body: JSON.stringify({ sessionId, customerName: name, customerEmail: email }),
       })
       if (!res.ok) {
-        const data = await res.json()
+        const data = await res.json() as { error?: string }
         throw new Error(data.error || 'Order failed')
       }
-      const order = await res.json()
+      const order = await res.json() as { id: string }
       navigate(`/order/${order.id}`)
     } catch (err) {
-      setError(err.message)
+      setError(err instanceof Error ? err.message : 'Order failed')
       setSubmitting(false)
     }
   }
@@ -72,7 +72,7 @@ export default function Checkout() {
         </div>
 
         {/* Payment Form */}
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6 transition-colors">
+        <form onSubmit={(e) => void handleSubmit(e)} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6 transition-colors">
           <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 font-display mb-4">Your Details</h2>
           <div className="space-y-4">
             <div>
@@ -80,7 +80,7 @@ export default function Checkout() {
               <input
                 type="text"
                 value={name}
-                onChange={e => setName(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
                 required
                 className="w-full px-4 py-2 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:border-purple-400 focus:outline-none"
               />
@@ -90,7 +90,7 @@ export default function Checkout() {
               <input
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                 required
                 className="w-full px-4 py-2 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:border-purple-400 focus:outline-none"
               />

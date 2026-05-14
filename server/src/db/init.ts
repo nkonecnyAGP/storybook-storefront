@@ -1,11 +1,12 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import type { Store, Book, Page } from '../types';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = join(__dirname, '..', '..', 'data.json');
 
-let store = {
+let store: Store = {
   books: [],
   pages: [],
   cartItems: [],
@@ -13,33 +14,33 @@ let store = {
   orderItems: [],
 };
 
-function persist() {
+function persist(): void {
   writeFileSync(DB_PATH, JSON.stringify(store, null, 2));
 }
 
-function load() {
+function load(): void {
   if (existsSync(DB_PATH)) {
-    store = JSON.parse(readFileSync(DB_PATH, 'utf-8'));
+    store = JSON.parse(readFileSync(DB_PATH, 'utf-8')) as Store;
   }
 }
 
-export function getStore() {
+export function getStore(): Store {
   return store;
 }
 
-export function save() {
+export function save(): void {
   persist();
 }
 
-export function initDb() {
+export function initDb(): void {
   load();
   if (store.books.length === 0) {
     seed();
   }
 }
 
-function seed() {
-  const books = [
+function seed(): void {
+  const books: Book[] = [
     {
       id: 'luna-star-garden',
       title: 'Luna and the Star Garden',
@@ -126,7 +127,7 @@ function seed() {
     },
   ];
 
-  const allPages = {
+  const allPages: Record<string, { text: string; illustration_description: string }[]> = {
     'luna-star-garden': [
       { text: 'Luna loved the night sky more than anything. Every evening, she would climb to the top of Willow Hill and count the stars until her eyes grew heavy.', illustration_description: 'A young girl with curly dark hair sitting on a grassy hilltop at twilight, gazing up at a sky full of bright stars. Fireflies float around her.' },
       { text: '"One hundred and seven... one hundred and eight..." she whispered. But tonight, something was different. A star was falling — not across the sky, but straight down, like a golden raindrop.', illustration_description: 'A brilliant golden star streaking downward through the purple night sky, leaving a shimmering trail.' },

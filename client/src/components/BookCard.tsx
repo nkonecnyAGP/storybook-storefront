@@ -1,7 +1,12 @@
 import { Link } from 'react-router-dom'
-import { useCart } from '../context/CartContext.jsx'
+import { useCart } from '../context/CartContext'
+import type { Book } from '../types'
 
-export default function BookCard({ book }) {
+interface BookCardProps {
+  book: Book;
+}
+
+export default function BookCard({ book }: BookCardProps) {
   const { addToCart } = useCart()
 
   return (
@@ -33,7 +38,7 @@ export default function BookCard({ book }) {
           <span className="font-bold text-gray-800 dark:text-gray-100">${book.price.toFixed(2)}</span>
         </div>
         <button
-          onClick={(e) => { e.preventDefault(); addToCart(book.id) }}
+          onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.preventDefault(); void addToCart(book.id) }}
           className="mt-3 w-full bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-xl font-semibold text-sm transition-colors cursor-pointer"
         >
           Add to Cart

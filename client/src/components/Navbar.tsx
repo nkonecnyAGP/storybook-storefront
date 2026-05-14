@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ShoppingCart, BookOpen, Sparkles, Moon, Sun } from 'lucide-react'
-import { useCart } from '../context/CartContext.jsx'
-import { useTheme } from '../context/ThemeContext.jsx'
+import { useCart } from '../context/CartContext'
+import { useTheme } from '../context/ThemeContext'
 
 export default function Navbar() {
   const { items } = useCart()
@@ -12,7 +12,7 @@ export default function Navbar() {
     <nav className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-amber-100 dark:border-gray-700 sticky top-0 z-50 transition-colors">
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 no-underline">
-          <span className="text-3xl">📚</span>
+          <span className="text-3xl">{"\u{1F4DA}"}</span>
           <span className="text-2xl font-bold text-amber-900 dark:text-amber-300 font-display">StoryBook</span>
         </Link>
 

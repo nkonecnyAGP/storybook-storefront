@@ -1,16 +1,18 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { initDb } from './db/init.js';
-import booksRouter from './routes/books.js';
-import generateRouter from './routes/generate.js';
-import cartRouter from './routes/cart.js';
-import ordersRouter from './routes/orders.js';
+import { initDb } from './db/init';
+import booksRouter from './routes/books';
+import generateRouter from './routes/generate';
+import cartRouter from './routes/cart';
+import ordersRouter from './routes/orders';
+
+import type { Request, Response } from 'express';
 
 dotenv.config({ path: '../.env' });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT: number = parseInt(process.env.PORT || '3001', 10);
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -22,7 +24,7 @@ app.use('/api/generate', generateRouter);
 app.use('/api/cart', cartRouter);
 app.use('/api/orders', ordersRouter);
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
