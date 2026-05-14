@@ -220,12 +220,18 @@ export default function BookDetail() {
                     Publish
                   </button>
                   <button
-                    onClick={() => void handleIllustrate()}
+                    onClick={() => {
+                      const remaining = pages.filter(p => !p.illustration_url).length
+                      const estimate = (remaining * 0.04).toFixed(2)
+                      if (remaining > 1 && !window.confirm(`Generate ${remaining} illustration${remaining === 1 ? '' : 's'}? Estimated cost: $${estimate}.`)) return
+                      void handleIllustrate()
+                    }}
                     disabled={illustrating || pages.every(p => p.illustration_url)}
+                    title={`Generates ${pages.filter(p => !p.illustration_url).length} image(s) at ~$0.04 each`}
                     className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold bg-purple-500 hover:bg-purple-600 text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default"
                   >
                     {illustrating ? <Loader2 size={16} className="animate-spin" /> : <Paintbrush size={16} />}
-                    {illustrating ? 'Illustrating...' : 'Illustrate All'}
+                    {illustrating ? 'Illustrating...' : `Illustrate All (~$${(pages.filter(p => !p.illustration_url).length * 0.04).toFixed(2)})`}
                   </button>
                 </>
               )}
