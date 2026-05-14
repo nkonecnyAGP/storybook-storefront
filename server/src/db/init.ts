@@ -28,6 +28,16 @@ export function getStore(): Store {
   return store;
 }
 
+export function resetStore(): void {
+  store = {
+    books: [],
+    pages: [],
+    cartItems: [],
+    orders: [],
+    orderItems: [],
+  };
+}
+
 export function save(): void {
   persist();
 }
