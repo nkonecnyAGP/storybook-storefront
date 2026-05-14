@@ -26,6 +26,7 @@ export async function resetDatabase() {
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.cartItem.deleteMany();
+  await prisma.bookVersion.deleteMany();
   await prisma.page.deleteMany();
   await prisma.book.deleteMany();
   await prisma.user.deleteMany();

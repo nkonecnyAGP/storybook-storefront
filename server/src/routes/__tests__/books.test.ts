@@ -2,6 +2,16 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import { createTestApp, resetDatabase } from '../../__tests__/setup';
+import prisma from '../../db/prisma';
+
+async function createUserAndGetToken(app: Express) {
+  const res = await request(app).post('/api/auth/register').send({
+    email: 'author@example.com',
+    name: 'Author',
+    password: 'pass1234',
+  });
+  return res.body.token as string;
+}
 
 describe('Books API routes', () => {
   let app: Express;
@@ -18,6 +28,17 @@ describe('Books API routes', () => {
       expect(res.body).toHaveLength(6);
     });
 
+    it('excludes draft books from storefront listing', async () => {
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { status: 'draft' },
+      });
+
+      const res = await request(app).get('/api/books');
+      expect(res.body).toHaveLength(5);
+      expect(res.body.find((b: { id: string }) => b.id === 'luna-star-garden')).toBeUndefined();
+    });
+
     it('each book has required fields', async () => {
       const res = await request(app).get('/api/books');
       for (const book of res.body) {
@@ -27,6 +48,7 @@ describe('Books API routes', () => {
         expect(book).toHaveProperty('description');
         expect(book).toHaveProperty('theme');
         expect(book).toHaveProperty('price');
+        expect(book).toHaveProperty('status');
       }
     });
 
@@ -87,6 +109,99 @@ describe('Books API routes', () => {
       const res = await request(app).get('/api/books/nonexistent');
       expect(res.status).toBe(404);
       expect(res.body.error).toBe('Book not found');
+    });
+
+    it('hides draft books from unauthenticated users', async () => {
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { status: 'draft' },
+      });
+
+      const res = await request(app).get('/api/books/luna-star-garden');
+      expect(res.status).toBe(404);
+    });
+
+    it('shows draft book to its creator', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { status: 'draft', created_by: user!.id },
+      });
+
+      const res = await request(app)
+        .get('/api/books/luna-star-garden')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe('luna-star-garden');
+    });
+  });
+
+  describe('PUT /api/books/:id/publish', () => {
+    it('publishes a draft book', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { status: 'draft', created_by: user!.id },
+      });
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/publish')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('published');
+    });
+
+    it('returns 401 without auth', async () => {
+      const res = await request(app).put('/api/books/luna-star-garden/publish');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 404 for another user\'s book', async () => {
+      const token = await createUserAndGetToken(app);
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/publish')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('DELETE /api/books/:id', () => {
+    it('deletes a book owned by the user', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { created_by: user!.id },
+      });
+
+      const res = await request(app)
+        .delete('/api/books/luna-star-garden')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const check = await request(app).get('/api/books/luna-star-garden');
+      expect(check.status).toBe(404);
+    });
+
+    it('returns 401 without auth', async () => {
+      const res = await request(app).delete('/api/books/luna-star-garden');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 404 for another user\'s book', async () => {
+      const token = await createUserAndGetToken(app);
+
+      const res = await request(app)
+        .delete('/api/books/luna-star-garden')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(404);
     });
   });
 });

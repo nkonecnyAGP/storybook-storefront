@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, Sparkles } from 'lucide-react'
+import { BookOpen, Sparkles, Send, Trash2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import BookCard from '../components/BookCard'
 import type { Book } from '../types'
 
 export default function MyBooks() {
   const { user } = useAuth()
   const [books, setBooks] = useState<Book[]>([])
   const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'all' | 'draft' | 'published'>('all')
 
-  useEffect(() => {
+  const fetchBooks = useCallback(() => {
     if (!user) return
     fetch('/api/books/mine', {
       headers: { Authorization: `Bearer ${user.token}` },
@@ -20,6 +20,26 @@ export default function MyBooks() {
       .catch(() => setBooks([]))
       .finally(() => setLoading(false))
   }, [user])
+
+  useEffect(() => { fetchBooks() }, [fetchBooks])
+
+  const publishBook = async (bookId: string) => {
+    if (!user) return
+    const res = await fetch(`/api/books/${bookId}/publish`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${user.token}` },
+    })
+    if (res.ok) fetchBooks()
+  }
+
+  const deleteBook = async (bookId: string) => {
+    if (!user) return
+    const res = await fetch(`/api/books/${bookId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${user.token}` },
+    })
+    if (res.ok) fetchBooks()
+  }
 
   if (!user) {
     return (
@@ -61,6 +81,10 @@ export default function MyBooks() {
     )
   }
 
+  const filtered = tab === 'all' ? books : books.filter(b => b.status === tab)
+  const draftCount = books.filter(b => b.status === 'draft').length
+  const publishedCount = books.filter(b => b.status === 'published').length
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
@@ -73,9 +97,70 @@ export default function MyBooks() {
           Create Another
         </Link>
       </div>
+
+      <div className="flex gap-2 mb-6">
+        {(['all', 'draft', 'published'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors cursor-pointer border-none ${
+              tab === t
+                ? 'bg-purple-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}
+          >
+            {t === 'all' ? `All (${books.length})` : t === 'draft' ? `Drafts (${draftCount})` : `Published (${publishedCount})`}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {books.map(book => (
-          <BookCard key={book.id} book={book} />
+        {filtered.map(book => (
+          <div key={book.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md overflow-hidden group">
+            <Link to={`/book/${book.id}`} className="no-underline">
+              <div
+                className="h-48 flex items-center justify-center text-7xl transition-transform duration-300 group-hover:scale-105 relative"
+                style={{ backgroundColor: book.cover_color + '20' }}
+              >
+                <span className="drop-shadow-lg">{book.cover_emoji}</span>
+                <span className={`absolute top-3 right-3 text-xs font-bold px-2.5 py-1 rounded-full ${
+                  book.status === 'draft'
+                    ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'
+                    : 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
+                }`}>
+                  {book.status === 'draft' ? 'Draft' : 'Published'}
+                </span>
+              </div>
+            </Link>
+            <div className="p-4">
+              <Link to={`/book/${book.id}`} className="no-underline">
+                <h3 className="font-display text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                  {book.title}
+                </h3>
+              </Link>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-3 line-clamp-2">{book.description}</p>
+              <div className="flex items-center gap-2">
+                {book.status === 'draft' && (
+                  <button
+                    onClick={() => void publishBook(book.id)}
+                    aria-label="Publish book"
+                    className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer border-none"
+                  >
+                    <Send size={14} />
+                    Publish
+                  </button>
+                )}
+                <button
+                  onClick={() => void deleteBook(book.id)}
+                  aria-label="Delete book"
+                  className="flex items-center gap-1.5 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer border-none"
+                >
+                  <Trash2 size={14} />
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
         ))}
       </div>
     </div>

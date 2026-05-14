@@ -31,13 +31,28 @@ model Book {
   price           Float
   is_featured     Boolean  @default(false)
   is_user_created Boolean  @default(false)
+  status          String   @default("published")
+  version         Int      @default(1)
   created_by      String?
   created_at      DateTime @default(now())
 
-  creator    User?       @relation(fields: [created_by], references: [id])
+  creator    User?         @relation(fields: [created_by], references: [id])
   pages      Page[]
+  versions   BookVersion[]
   cartItems  CartItem[]
   orderItems OrderItem[]
+}
+
+model BookVersion {
+  id         Int      @id @default(autoincrement())
+  book_id    String
+  version    Int
+  pages_json String
+  created_at DateTime @default(now())
+
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
+
+  @@unique([book_id, version])
 }
 
 model Page {

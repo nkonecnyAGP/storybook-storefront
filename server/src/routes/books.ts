@@ -8,7 +8,7 @@ const router = Router();
 router.get('/', async (req: Request, res: Response) => {
   const { theme, age_range, featured } = req.query;
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { status: 'published' };
   if (theme) where.theme = theme;
   if (age_range) where.age_range = age_range;
   if (featured === 'true') where.is_featured = true;
@@ -50,7 +50,48 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
     return res.status(404).json({ error: 'Book not found' });
   }
 
+  if (book.status === 'draft') {
+    const user = await getAuthUser(req);
+    if (!user || user.id !== book.created_by) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+  }
+
   res.json(book);
+});
+
+router.put('/:id/publish', async (req: Request<{ id: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+
+  const updated = await prisma.book.update({
+    where: { id: req.params.id },
+    data: { status: 'published' },
+  });
+
+  res.json(updated);
+});
+
+router.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+
+  await prisma.book.delete({ where: { id: req.params.id } });
+  res.json({ success: true });
 });
 
 export default router;

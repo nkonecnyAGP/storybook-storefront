@@ -100,6 +100,8 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
         price: 24.99,
         is_featured: false,
         is_user_created: true,
+        status: user ? 'draft' : 'published',
+        version: 1,
         created_by: user?.id ?? null,
         pages: {
           create: story.pages.map((page, i) => ({
@@ -107,6 +109,12 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
             text: page.text,
             illustration_description: page.illustrationDescription,
           })),
+        },
+        versions: {
+          create: {
+            version: 1,
+            pages_json: JSON.stringify(story.pages),
+          },
         },
       },
       include: { pages: { orderBy: { page_number: 'asc' } } },
