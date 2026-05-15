@@ -22,12 +22,7 @@ Captured 2026-05-14 evening while using the app to prep demo books. Ranked rough
 
 2. **Expandable book-view layout (theater mode).** The book-spread view today renders inside the narrow main column. For reading and editing the expanded illustration descriptions, a fullscreen / wider mode would help — particularly with the suggestion-revise panel visible alongside. UX: a toggle button in the spread footer that expands the spread to ~90% viewport width and keeps the inline revise panel docked. No data changes.
 
-3. **Visual consistency across pages for the same character.** Today each page is illustrated independently — the same character can look noticeably different page to page (different hair, different clothes, different proportions). This is a long-term blocker for the product feeling "real". Documented in ADR-002 already as a Phase 2 concern. Options to evaluate:
-   - Character-sheet pass: generate one canonical portrait per character at creation, distill its visual traits into a short text block, append to every page prompt.
-   - Switch to `gpt-image-1` (supports image inputs) so we can reference a canonical character image when generating each page.
-   - Seed deterministically when generating across pages of the same book.
-
-   **Not blocking MVP**, but every additional page makes the inconsistency more visible. Schedule for the first post-demo iteration.
+3. **Visual consistency across pages for the same character + provider migration.** Today each page is illustrated independently — the same character can look noticeably different page to page. Combined with the realization that real OpenAI spend is ~$0.20-$0.45 per image (10× our paper estimate, so a 15-page Full book is $3-$7), both problems are now planned together. See [illustration-providers-and-character-consistency.md](illustration-providers-and-character-consistency.md) for the full research — recommended path is **Fal.ai Flux Pro 1.1** as the new primary provider plus **character-sheet portraits passed via IP-Adapter** to every page generation. Estimated impact: ~5-8× cost reduction *and* solves the consistency gap. Phased in three implementation chunks (descriptors / provider abstraction / IP-Adapter).
 
 4. **Bug: navigation chevrons in BookSpread overlay text on long pages.** When a page has enough text to wrap deep, the right chevron (`aria-label="Next spread"`) renders on top of the last line. Same risk on the left chevron with overflowing illustrations. Fix: bump right padding (`pr-14 md:pr-16`) on the right `PageCanvas` and left padding on the left one, so text wraps before reaching the chevron. Small CSS change; reproduce by generating a page with 5+ sentences. Screenshot captured during demo prep.
 
