@@ -613,26 +613,17 @@ function CharacterRow({ character, label, accent, showRelationship, onChange, on
             {RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         ) : (
-          <input
-            type="text"
-            value={character.descriptor || ''}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange({ descriptor: e.target.value })}
-            placeholder="Descriptor (optional)"
-            maxLength={120}
-            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm focus:border-purple-400 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500"
-          />
+          <span className="text-xs text-gray-400 dark:text-gray-500 self-center">More detail = more consistent illustrations.</span>
         )}
       </div>
-      {showRelationship && (
-        <input
-          type="text"
-          value={character.descriptor || ''}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange({ descriptor: e.target.value })}
-          placeholder="Descriptor (optional, e.g., loves dinosaurs)"
-          maxLength={120}
-          className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm focus:border-purple-400 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500"
-        />
-      )}
+      <textarea
+        value={character.descriptor || ''}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onChange({ descriptor: e.target.value })}
+        placeholder="Visual descriptor (optional but recommended). Include age, hair color/style, skin tone, distinctive clothing, accessories. Detail helps the same character look the same across pages. e.g., '8-year-old with curly dark hair in two braids, freckles, yellow raincoat, green rain boots'"
+        maxLength={400}
+        rows={2}
+        className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm focus:border-purple-400 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500 resize-none leading-snug"
+      />
     </div>
   )
 }

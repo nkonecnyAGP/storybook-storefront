@@ -125,6 +125,49 @@ router.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
   res.json({ success: true });
 });
 
+router.put('/:id/pages/:pageNumber', async (req: Request<{ id: string; pageNumber: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const pageNumber = parseInt(req.params.pageNumber, 10);
+  if (!Number.isFinite(pageNumber) || pageNumber < 1) {
+    return res.status(400).json({ error: 'invalid page number' });
+  }
+
+  const { illustration_description } = req.body as { illustration_description?: string };
+  if (typeof illustration_description !== 'string' || !illustration_description.trim()) {
+    return res.status(400).json({ error: 'illustration_description is required' });
+  }
+  if (illustration_description.length > 2000) {
+    return res.status(400).json({ error: 'illustration_description must be 2000 characters or fewer' });
+  }
+
+  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+  if (book.status !== 'draft') {
+    return res.status(403).json({ error: 'Pages can only be edited on draft books' });
+  }
+
+  try {
+    await prisma.page.update({
+      where: { book_id_page_number: { book_id: book.id, page_number: pageNumber } },
+      data: { illustration_description: illustration_description.trim() },
+    });
+  } catch {
+    return res.status(404).json({ error: 'Page not found' });
+  }
+
+  const updated = await prisma.book.findUnique({
+    where: { id: book.id },
+    include: { pages: { orderBy: { page_number: 'asc' } } },
+  });
+  res.json(updated ? hydrateBook(updated) : null);
+});
+
 router.post('/:id/revise', async (req: Request<{ id: string }>, res: Response) => {
   const user = await getAuthUser(req);
   if (!user) {

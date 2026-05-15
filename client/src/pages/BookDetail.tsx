@@ -91,6 +91,22 @@ export default function BookDetail() {
     }
   }
 
+  const handleEditPrompt = async (pageNumber: number, description: string): Promise<void> => {
+    if (!user) return
+    const res = await fetch(`/api/books/${book.id}/pages/${pageNumber}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`,
+      },
+      body: JSON.stringify({ illustration_description: description }),
+    })
+    if (res.ok) {
+      const updated = await res.json() as BookWithPages
+      setBook(updated)
+    }
+  }
+
   const handleIllustrate = async (pageNum?: number) => {
     if (!user) return
     setIllustrating(true)
@@ -301,6 +317,7 @@ export default function BookDetail() {
             await handleIllustrate(pageNum)
           }}
           onRevise={handleRevise}
+          onEditPrompt={handleEditPrompt}
           revising={revising}
           reviseError={reviseError}
         />
