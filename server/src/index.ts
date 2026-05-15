@@ -11,6 +11,7 @@ import generateRouter from './routes/generate';
 import cartRouter from './routes/cart';
 import ordersRouter from './routes/orders';
 import uploadsRouter from './routes/uploads';
+import { snapshotDb } from './db/snapshot';
 
 import type { Request, Response } from 'express';
 
@@ -37,4 +38,6 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  // Best-effort backup of dev.db on every server start. Quiet on failure.
+  void snapshotDb();
 });
