@@ -10,9 +10,28 @@
 
 ## Open / planned (next features queued in chat)
 
-- **Browse navbar button fix** — `chore/browse-fix-and-db-snapshot` branch (in flight at time of writing). Browse used to no-op when already on Home; now scrolls to the catalog section.
-- **dev.db snapshot safety net** — same chore branch. Backs up `server/prisma/dev.db` to `server/.backups/` on every server start, pruning files older than 7 days. Closes the data-loss gap discovered when a user's drafts + accounts were wiped (likely by an unintentional `npm run db:reset` from a parallel CLI session).
-- Phase 2 / Phase 3 ideas below are still open. None have been pulled in yet.
+- **Browse navbar button fix** — SHIPPED via [PR #5](https://github.com/nkonecnyAGP/storybook-storefront/pull/5) (merged to develop), released to master via [PR #6](https://github.com/nkonecnyAGP/storybook-storefront/pull/6).
+- **dev.db snapshot safety net** — same as above. Backs up `server/prisma/dev.db` to `server/.backups/` on every server start with 7-day retention. Closes the data-loss gap.
+- **Demo seed (`db:seed-demo`)** — in flight via [PR #7](https://github.com/nkonecnyAGP/storybook-storefront/pull/7). Creates a persistent `demo@storybook.local` user with 3 sample books for demo prep, reusing orphaned illustration files from the wiped session.
+
+## Surfaced during demo prep — needs implementation
+
+Captured 2026-05-14 evening while using the app to prep demo books. Ranked roughly by user impact during the demo flow.
+
+1. **Edit illustration prompt before sending the image AI request.** Today when a user chose "No images" or "Cover only" mode and is later reviewing the suggested per-page illustration prompts, the only way to influence the prompt is to click *Generate illustration*, see what came back, then click *Regenerate* with feedback. That's two paid DALL-E calls when one well-edited prompt could have produced the right image first try. Need an inline editable textarea bound to `page.illustration_description` that saves back before the user clicks Generate. Server side: add a `PUT /api/books/:id/pages/:pageNumber` endpoint that only allows the draft owner to edit `illustration_description` (no schema change — column already exists).
+
+2. **Expandable book-view layout (theater mode).** The book-spread view today renders inside the narrow main column. For reading and editing the expanded illustration descriptions, a fullscreen / wider mode would help — particularly with the suggestion-revise panel visible alongside. UX: a toggle button in the spread footer that expands the spread to ~90% viewport width and keeps the inline revise panel docked. No data changes.
+
+3. **Visual consistency across pages for the same character.** Today each page is illustrated independently — the same character can look noticeably different page to page (different hair, different clothes, different proportions). This is a long-term blocker for the product feeling "real". Documented in ADR-002 already as a Phase 2 concern. Options to evaluate:
+   - Character-sheet pass: generate one canonical portrait per character at creation, distill its visual traits into a short text block, append to every page prompt.
+   - Switch to `gpt-image-1` (supports image inputs) so we can reference a canonical character image when generating each page.
+   - Seed deterministically when generating across pages of the same book.
+
+   **Not blocking MVP**, but every additional page makes the inconsistency more visible. Schedule for the first post-demo iteration.
+
+4. **Bug: navigation chevrons in BookSpread overlay text on long pages.** When a page has enough text to wrap deep, the right chevron (`aria-label="Next spread"`) renders on top of the last line. Same risk on the left chevron with overflowing illustrations. Fix: bump right padding (`pr-14 md:pr-16`) on the right `PageCanvas` and left padding on the left one, so text wraps before reaching the chevron. Small CSS change; reproduce by generating a page with 5+ sentences. Screenshot captured during demo prep.
+
+The Phase 2 and Phase 3 sections further down in this file still apply.
 
 ## Context
 
