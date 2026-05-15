@@ -38,6 +38,12 @@ Our local `.claude/` has custom agents only (booksmith, qa, storefront). The ups
 | Generic agents (code-captain, spec-generator, story-creator, tech-spec) | Would conflict with or duplicate our project-specific agents (booksmith, qa, storefront). |
 | `new-command` | Meta-tooling for authoring commands. Useful once we have a reason to author one. |
 
+## Adjacent infrastructure follow-ups (not Code Captain, but in the same neighborhood)
+
+| Item | Why | Notes |
+|---|---|---|
+| **Cloud hosting for `develop` and `master`** | Currently everything is localhost. Want a persistent URL for `develop` (staging) and `master` (prod-ish demo) so the app can be shared without running `npm run dev` on someone's laptop. | Recommended path: Vercel for the client + Railway/Fly.io for the Express + SQLite server (Vercel functions don't suit SQLite well). Both have free / cheap tiers and per-branch auto-deploy. Defer until after the 2026-05-15 demo. |
+
 ## Suggested install path (post-demo)
 
 1. **Don't run `npx @devobsessed/code-captain` directly.** It would install the full kit and likely conflict with the existing `.claude/agents/`. Pick what we want by hand.
