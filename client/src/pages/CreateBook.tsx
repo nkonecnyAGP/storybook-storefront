@@ -475,34 +475,40 @@ export default function CreateBook() {
             </div>
 
             <div className="mt-6">
-              <h3 className="font-bold text-gray-800 dark:text-gray-100 font-display mb-2">Preview Mode</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Pick how much we render up front. You can always generate the rest later, per page.</p>
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 font-display mb-2">Illustration Mode</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                Every mode generates the full story text and an illustration prompt for each page.
+                The difference is how many of those prompts we actually send to the image AI right now.
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <PreviewModeCard
                   selected={previewMode === 'quick'}
                   onClick={() => setPreviewMode('quick')}
-                  label="Quick"
+                  label="No images (preview prompts)"
                   time="~15s"
-                  cost="Free"
-                  description="Story text only. Placeholder illustrations you can fill in later."
+                  cost="$0 — no image AI calls"
+                  description="Story + per-page illustration prompts. Zero image AI cost. Review the prompts first, then generate individual pages later."
                 />
                 <PreviewModeCard
                   selected={previewMode === 'cover'}
                   onClick={() => setPreviewMode('cover')}
-                  label="Cover-first"
+                  label="Cover only"
                   time="~45s"
-                  cost="~$0.04"
-                  description="Story + book cover illustration."
+                  cost="~$0.04 — 1 image AI call"
+                  description="Story + 1 generated cover image. Inner pages stay as prompts — generate them later if you like the cover."
                 />
                 <PreviewModeCard
                   selected={previewMode === 'full'}
                   onClick={() => setPreviewMode('full')}
-                  label="Full book"
+                  label="All images"
                   time={`~${Math.max(2, Math.ceil((pageCount + 1) * 20 / 60))} min`}
-                  cost={`~$${((pageCount + 1) * 0.04).toFixed(2)}`}
-                  description={`Story + cover + all ${pageCount} page illustrations.`}
+                  cost={`~$${((pageCount + 1) * 0.04).toFixed(2)} — ${pageCount + 1} image AI calls`}
+                  description={`Story + cover + every page illustrated up front (${pageCount} pages).`}
                 />
               </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                In all modes you can still generate or regenerate individual illustrations later from the book page. Each later click is ~$0.04.
+              </p>
             </div>
 
             <div className="bg-purple-50 dark:bg-purple-900/20 rounded-2xl p-4 mt-4">

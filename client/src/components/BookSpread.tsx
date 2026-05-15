@@ -308,7 +308,7 @@ function PageIllustration({ page, isOwner, isDraft, illustrating, feedback, onFe
               className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 cursor-pointer border-none disabled:opacity-40 whitespace-nowrap"
             >
               {illustrating ? <Loader2 size={12} className="animate-spin" /> : <Paintbrush size={12} />}
-              Redo
+              Redo (~$0.04)
             </button>
           </div>
         )}
@@ -329,7 +329,7 @@ function PageIllustration({ page, isOwner, isDraft, illustrating, feedback, onFe
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-500 text-white hover:bg-purple-600 cursor-pointer border-none disabled:opacity-40"
         >
           {illustrating ? <Loader2 size={12} className="animate-spin" /> : <Paintbrush size={12} />}
-          {illustrating ? 'Drawing...' : 'Generate illustration'}
+          {illustrating ? 'Drawing...' : 'Generate illustration (~$0.04)'}
         </button>
       )}
     </div>
