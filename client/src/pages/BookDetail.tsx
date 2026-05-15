@@ -48,19 +48,21 @@ export default function BookDetail() {
     setTimeout(() => setAdded(false), 2000)
   }
 
-  const handleRevise = async (feedbackText?: string) => {
+  const handleRevise = async (feedbackText?: string, newPageCount?: number) => {
     const text = (feedbackText ?? feedback).trim()
     if (!text || !user) return
     setRevising(true)
     setReviseError('')
     try {
+      const body: { feedback: string; newPageCount?: number } = { feedback: text }
+      if (typeof newPageCount === 'number') body.newPageCount = newPageCount
       const res = await fetch(`/api/books/${book.id}/revise`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${user.token}`,
         },
-        body: JSON.stringify({ feedback: text }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const data = await res.json() as { error?: string }

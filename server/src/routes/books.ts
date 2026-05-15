@@ -131,7 +131,7 @@ router.post('/:id/revise', async (req: Request<{ id: string }>, res: Response) =
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const { feedback } = req.body as { feedback?: string };
+  const { feedback, newPageCount: rawNewPageCount } = req.body as { feedback?: string; newPageCount?: number };
   if (!feedback?.trim()) {
     return res.status(400).json({ error: 'feedback is required' });
   }
@@ -150,6 +150,14 @@ router.post('/:id/revise', async (req: Request<{ id: string }>, res: Response) =
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
   }
 
+  const currentPageCount = book.pages.length;
+  let targetPageCount = currentPageCount;
+  if (typeof rawNewPageCount === 'number' && Number.isFinite(rawNewPageCount)) {
+    const clamped = Math.min(15, Math.max(3, Math.round(rawNewPageCount)));
+    targetPageCount = clamped;
+  }
+  const pageCountChanged = targetPageCount !== currentPageCount;
+
   try {
     const currentPages = book.pages.map(p => ({
       page_number: p.page_number,
@@ -164,6 +172,14 @@ router.post('/:id/revise', async (req: Request<{ id: string }>, res: Response) =
       ? `Cast (keep these characters consistent): ${hydrated.characters.map(c => `${c.name} (${c.role}${c.relationship ? `, ${c.relationship}` : ''})`).join('; ')}`
       : '';
 
+    const pageCountInstruction = pageCountChanged
+      ? `Restructure the story to have exactly ${targetPageCount} pages (was ${currentPageCount}). ${
+          targetPageCount > currentPageCount
+            ? `Add ${targetPageCount - currentPageCount} new page(s) naturally — expand the middle, slow down a transition, or add a beat. Keep the original arc intact.`
+            : `Condense to ${targetPageCount} pages by merging or trimming pages — keep the most important beats and the resolution.`
+        }`
+      : `Keep the same number of pages (${currentPageCount}).`;
+
     const prompt = `You are revising a children's story based on reader feedback. Here is the current story:
 
 Title: ${book.title}
@@ -177,7 +193,7 @@ ${currentPages.map(p => `Page ${p.page_number}: ${p.text}\n  Illustration: ${p.i
 
 Reader feedback: ${feedback}
 
-Revise the story incorporating the feedback. Keep the same number of pages (${book.pages.length}). You may also update the description if the story changed significantly.
+Revise the story incorporating the feedback. ${pageCountInstruction} You may also update the description if the story changed significantly.
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
@@ -192,7 +208,7 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: Math.max(2000, targetPageCount * 500),
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -222,14 +238,36 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
     });
 
     const newVersion = book.version + 1;
+    const finalPageCount = revised.pages.length;
 
-    for (let i = 0; i < revised.pages.length; i++) {
+    // Update pages that exist in both old and new (preserve illustration_url)
+    const overlap = Math.min(finalPageCount, currentPageCount);
+    for (let i = 0; i < overlap; i++) {
       await prisma.page.update({
         where: { book_id_page_number: { book_id: book.id, page_number: i + 1 } },
         data: {
           text: revised.pages[i].text,
           illustration_description: revised.pages[i].illustrationDescription,
         },
+      });
+    }
+    // Add new pages if the story grew
+    if (finalPageCount > currentPageCount) {
+      for (let i = currentPageCount; i < finalPageCount; i++) {
+        await prisma.page.create({
+          data: {
+            book_id: book.id,
+            page_number: i + 1,
+            text: revised.pages[i].text,
+            illustration_description: revised.pages[i].illustrationDescription,
+          },
+        });
+      }
+    }
+    // Remove pages if the story shrank
+    if (finalPageCount < currentPageCount) {
+      await prisma.page.deleteMany({
+        where: { book_id: book.id, page_number: { gt: finalPageCount } },
       });
     }
 

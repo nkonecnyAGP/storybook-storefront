@@ -18,6 +18,19 @@ interface GenerateRequestBody {
   styleDescriptor?: string;
   styleReferenceUrl?: string;
   previewMode?: PreviewMode;
+  pageCount?: number;
+}
+
+const MIN_PAGES = 3;
+const MAX_PAGES = 15;
+const DEFAULT_PAGES = 5;
+
+function normalizePageCount(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return DEFAULT_PAGES;
+  const n = Math.round(raw);
+  if (n < MIN_PAGES) return MIN_PAGES;
+  if (n > MAX_PAGES) return MAX_PAGES;
+  return n;
 }
 
 interface GeneratedStory {
@@ -83,6 +96,7 @@ router.post('/', async (req: Request, res: Response) => {
   const previewMode: PreviewMode = body.previewMode && VALID_PREVIEW_MODES.includes(body.previewMode)
     ? body.previewMode
     : 'quick';
+  const pageCount = normalizePageCount(body.pageCount);
 
   const characters = normalizeCharacters(body);
   const primary = characters.find(c => c.role === 'primary');
@@ -99,7 +113,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const client = new Anthropic({ apiKey });
 
-    const prompt = `You are a beloved children's book author. Create a short children's story with exactly 5 pages.
+    const prompt = `You are a beloved children's book author. Create a children's story with exactly ${pageCount} pages.
 
 Theme: ${theme}
 Target age range: ${ageRange}
@@ -107,6 +121,8 @@ ${formatCastForPrompt(characters)}
 ${additionalDetails ? `Additional details: ${additionalDetails}` : ''}
 
 Use every character listed above. The primary character is the protagonist. Antagonists provide conflict that gets resolved by the end. Supporting characters should appear at least once with their relationship to the primary character reflected in the story.
+
+Pace the story across exactly ${pageCount} pages: page 1 introduces the world and primary character, the middle pages develop the conflict, and the final page resolves it. Longer stories can take more time on details and side beats; shorter stories should move quickly.
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
@@ -127,7 +143,7 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: Math.max(2000, pageCount * 500),
       messages: [{ role: 'user', content: prompt }],
     });
 

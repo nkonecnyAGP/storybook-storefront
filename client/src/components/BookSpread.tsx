@@ -8,7 +8,7 @@ interface BookSpreadProps {
   isDraft: boolean;
   illustrating: boolean;
   onIllustratePage: (pageNumber: number, feedback?: string) => Promise<void>;
-  onRevise: (feedback: string) => Promise<void>;
+  onRevise: (feedback: string, newPageCount?: number) => Promise<void>;
   revising: boolean;
   reviseError?: string;
 }
@@ -39,6 +39,7 @@ export default function BookSpread({
   const [flipping, setFlipping] = useState<'next' | 'prev' | null>(null)
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedback, setFeedback] = useState('')
+  const [reviseTargetPageCount, setReviseTargetPageCount] = useState<number>(pages.length)
   const [illustrationFeedback, setIllustrationFeedback] = useState('')
 
   const spread = spreads[spreadIndex]
@@ -58,7 +59,8 @@ export default function BookSpread({
 
   const handleSubmitFeedback = async (): Promise<void> => {
     if (!feedback.trim()) return
-    await onRevise(feedback)
+    const newCount = reviseTargetPageCount !== pages.length ? reviseTargetPageCount : undefined
+    await onRevise(feedback, newCount)
     setFeedback('')
     setShowFeedback(false)
     setSpreadIndex(0)
@@ -218,6 +220,22 @@ export default function BookSpread({
             className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:border-purple-400 focus:outline-none text-sm h-24 resize-none placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50"
             maxLength={1000}
           />
+          <div className="mt-3 flex items-center gap-3">
+            <label htmlFor="revise-page-count" className="text-xs font-semibold text-gray-600 dark:text-gray-400 shrink-0">Page count:</label>
+            <input
+              id="revise-page-count"
+              type="range"
+              min={3}
+              max={15}
+              value={reviseTargetPageCount}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReviseTargetPageCount(parseInt(e.target.value, 10))}
+              disabled={revising}
+              className="flex-1 accent-purple-500 disabled:opacity-50"
+            />
+            <span className="text-sm font-bold text-purple-600 dark:text-purple-300 w-24 text-right">
+              {reviseTargetPageCount} {reviseTargetPageCount === pages.length ? '(same)' : reviseTargetPageCount > pages.length ? `(+${reviseTargetPageCount - pages.length})` : `(${reviseTargetPageCount - pages.length})`}
+            </span>
+          </div>
           {reviseError && (
             <div className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 p-3 rounded-xl mt-3 text-sm">
               {reviseError}
