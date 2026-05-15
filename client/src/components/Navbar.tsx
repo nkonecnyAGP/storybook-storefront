@@ -19,7 +19,7 @@ export default function Navbar() {
         </Link>
 
         <div className="flex items-center gap-4">
-          <Link to="/" className="text-amber-800 dark:text-amber-300 hover:text-amber-600 dark:hover:text-amber-200 flex items-center gap-1 no-underline font-semibold">
+          <Link to="/#browse" className="text-amber-800 dark:text-amber-300 hover:text-amber-600 dark:hover:text-amber-200 flex items-center gap-1 no-underline font-semibold">
             <BookOpen size={18} />
             <span className="hidden sm:inline">Browse</span>
           </Link>

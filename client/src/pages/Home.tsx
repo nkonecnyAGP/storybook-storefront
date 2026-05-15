@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Sparkles, Search, X, BookOpen, Eye } from 'lucide-react'
 import BookCard from '../components/BookCard'
 import type { Book, Page } from '../types'
@@ -83,6 +83,7 @@ function BookPreviewModal({ book, onClose }: { book: Book; onClose: () => void }
 }
 
 export default function Home() {
+  const location = useLocation()
   const [books, setBooks] = useState<Book[]>([])
   const [themes, setThemes] = useState<string[]>([])
   const [ageRanges, setAgeRanges] = useState<string[]>([])
@@ -91,6 +92,14 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [previewBook, setPreviewBook] = useState<Book | null>(null)
+
+  useEffect(() => {
+    if (location.hash) {
+      const id = location.hash.slice(1)
+      const target = document.getElementById(id)
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [location.hash, location.key, loading])
 
   useEffect(() => {
     Promise.all([
@@ -220,7 +229,7 @@ export default function Home() {
         )}
 
         {/* Browse All with Filters */}
-        <section>
+        <section id="browse" style={{ scrollMarginTop: '5rem' }}>
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 font-display mr-4">
               {hasActiveFilters ? 'Search Results' : 'All Books'}
