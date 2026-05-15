@@ -1,5 +1,19 @@
 # StoryBook Storefront — Illustration & Authoring Upgrades
 
+## Status (as of 2026-05-14, evening)
+
+- **MVP Phase 1 — SHIPPED via [PR #1](https://github.com/nkonecnyAGP/storybook-storefront/pull/1).** All five pieces below are live on `master`.
+- **Post-MVP follow-ups — SHIPPED via [PR #3](https://github.com/nkonecnyAGP/storybook-storefront/pull/3) and [PR #4](https://github.com/nkonecnyAGP/storybook-storefront/pull/4):**
+  - Clearer illustration-mode wording + per-action cost hints in the wizard, on Illustrate All, and on per-page generate buttons. Confirm dialog before multi-image generation.
+  - Variable page count (3-15) at creation, and the ability to expand or contract page count during draft revision. Existing illustrations on overlapping pages are preserved across revisions.
+- **Workflow changes:** Adopted a `develop`-as-integration / `master`-as-release branching model with a hotfix path. See [branching-workflow.md](branching-workflow.md). Going forward, feature branches target `develop`, not `master`.
+
+## Open / planned (next features queued in chat)
+
+- **Browse navbar button fix** — `chore/browse-fix-and-db-snapshot` branch (in flight at time of writing). Browse used to no-op when already on Home; now scrolls to the catalog section.
+- **dev.db snapshot safety net** — same chore branch. Backs up `server/prisma/dev.db` to `server/.backups/` on every server start, pruning files older than 7 days. Closes the data-loss gap discovered when a user's drafts + accounts were wiped (likely by an unintentional `npm run db:reset` from a parallel CLI session).
+- Phase 2 / Phase 3 ideas below are still open. None have been pulled in yet.
+
 ## Context
 
 Today's creation flow is thin in three ways the user wants to fix:
