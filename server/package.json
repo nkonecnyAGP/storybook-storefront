@@ -9,6 +9,7 @@
     "test:watch": "vitest",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed-demo": "tsx prisma/demo-seed.ts",
     "db:reset": "prisma migrate reset"
   },
   "dependencies": {
