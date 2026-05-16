@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, Sparkles, Send, Trash2 } from 'lucide-react'
+import { BookOpen, Sparkles, Send, Trash2, EyeOff } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import type { Book } from '../types'
 
@@ -9,6 +9,7 @@ export default function MyBooks() {
   const [books, setBooks] = useState<Book[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'all' | 'draft' | 'published'>('all')
+  const [unpublishingId, setUnpublishingId] = useState<string | null>(null)
 
   const fetchBooks = useCallback(() => {
     if (!user) return
@@ -30,6 +31,31 @@ export default function MyBooks() {
       headers: { Authorization: `Bearer ${user.token}` },
     })
     if (res.ok) fetchBooks()
+  }
+
+  const unpublishBook = async (bookId: string) => {
+    if (!user) return
+    const ok = window.confirm(
+      'Unpublish this book? It will be removed from the public catalog but kept as a draft you can keep editing.'
+    )
+    if (!ok) return
+    setUnpublishingId(bookId)
+    try {
+      const res = await fetch(`/api/books/${bookId}/unpublish`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${user.token}` },
+      })
+      if (res.ok) {
+        const updated = (await res.json()) as Book
+        setBooks(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)))
+      } else {
+        window.alert("Couldn't unpublish that book. It may already be a draft — refresh to see the latest state.")
+      }
+    } catch {
+      window.alert("Couldn't unpublish that book. Check your connection and try again.")
+    } finally {
+      setUnpublishingId(null)
+    }
   }
 
   const deleteBook = async (bookId: string) => {
@@ -148,6 +174,17 @@ export default function MyBooks() {
                   >
                     <Send size={14} />
                     Publish
+                  </button>
+                )}
+                {book.status === 'published' && (
+                  <button
+                    onClick={() => void unpublishBook(book.id)}
+                    disabled={unpublishingId === book.id}
+                    aria-label="Unpublish book"
+                    className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer border border-gray-200 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <EyeOff size={14} />
+                    {unpublishingId === book.id ? 'Unpublishing...' : 'Unpublish'}
                   </button>
                 )}
                 <button

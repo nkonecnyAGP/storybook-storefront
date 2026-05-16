@@ -1,8 +1,17 @@
 import { writeFile, mkdir, readdir } from 'fs/promises';
 import { join } from 'path';
+import type { Character } from '../types';
 
 const ILLUSTRATIONS_DIR = join(import.meta.dirname, '../../public/illustrations');
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+
+function formatCastPrefix(characters?: Character[]): string {
+  if (!characters || characters.length === 0) return '';
+  const cast = characters
+    .map(c => `${c.name}${c.descriptor ? ` (${c.descriptor})` : ''}`)
+    .join('; ');
+  return `Cast (keep these characters visually consistent): ${cast}. `;
+}
 
 interface OpenAIImageItem {
   url?: string;
@@ -59,12 +68,14 @@ export async function generateIllustration(
   description: string,
   feedback?: string,
   styleDescriptor?: string | null,
+  characters?: Character[],
 ): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
   const style = styleDescriptor?.trim() || 'Whimsical, colorful, warm, suitable for young children';
-  let prompt = `Children's book illustration, ${description}. ${style}. No text or words in the image.`;
+  const castPrefix = formatCastPrefix(characters);
+  let prompt = `${castPrefix}Children's book illustration, ${description}. ${style}. No text or words in the image.`;
   if (feedback) {
     prompt += ` Revision instructions: ${feedback}`;
   }
@@ -121,12 +132,14 @@ export async function generateCover(
   title: string,
   description: string,
   styleDescriptor?: string | null,
+  characters?: Character[],
 ): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
   const style = styleDescriptor?.trim() || 'Whimsical, colorful, warm, suitable for young children';
-  const prompt = `Children's book cover illustration for a story titled "${title}". Scene: ${description}. ${style}. Composition suitable for a book cover (centered subject, room at top for title). No text or words in the image.`;
+  const castPrefix = formatCastPrefix(characters);
+  const prompt = `${castPrefix}Children's book cover illustration for a story titled "${title}". Scene: ${description}. ${style}. Composition suitable for a book cover (centered subject, room at top for title). No text or words in the image.`;
 
   const buffer = await callOpenAIImage(apiKey, prompt);
   if (!buffer) return null;

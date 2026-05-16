@@ -208,6 +208,7 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
         story.title,
         story.coverDescription || story.description,
         styleDescriptor,
+        characters,
       );
       if (coverUrl) {
         book = await prisma.book.update({
@@ -226,6 +227,7 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
           page.illustration_description,
           undefined,
           styleDescriptor,
+          characters,
         );
         if (url) {
           await prisma.page.update({ where: { id: page.id }, data: { illustration_url: url } });

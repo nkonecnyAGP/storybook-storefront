@@ -1,8 +1,31 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import { createTestApp, resetDatabase } from '../../__tests__/setup';
 import prisma from '../../db/prisma';
+
+// Stub the Anthropic SDK at module boundary so /revise tests can drive the
+// handler past the API key check without making real network calls.
+// The mocked client returns a canned JSON-shaped response that the revise
+// handler parses as a 5-page story.
+const mockCreate = vi.fn();
+vi.mock('@anthropic-ai/sdk', () => {
+  class MockAnthropic {
+    messages = { create: (...args: unknown[]) => mockCreate(...args) };
+  }
+  return { default: MockAnthropic };
+});
+
+function mockClaudeReviseResponse(pages: { text: string; illustrationDescription: string }[], description = 'Revised description') {
+  mockCreate.mockResolvedValueOnce({
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({ description, pages }),
+      },
+    ],
+  });
+}
 
 async function createUserAndGetToken(app: Express) {
   const res = await request(app).post('/api/auth/register').send({
@@ -170,6 +193,53 @@ describe('Books API routes', () => {
     });
   });
 
+  describe('PUT /api/books/:id/unpublish', () => {
+    it('unpublishes a published book owned by the user', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { status: 'published', created_by: user!.id },
+      });
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/unpublish')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('draft');
+    });
+
+    it('returns 401 without auth', async () => {
+      const res = await request(app).put('/api/books/luna-star-garden/unpublish');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 404 for another user\'s book', async () => {
+      const token = await createUserAndGetToken(app);
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/unpublish')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 403 if the book is not currently published', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { status: 'draft', created_by: user!.id },
+      });
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/unpublish')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(403);
+    });
+  });
+
   describe('PUT /api/books/:id/versions/:version/restore', () => {
     async function setupDraftWithSnapshot(token: string) {
       const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
@@ -321,6 +391,82 @@ describe('Books API routes', () => {
       for (const page of res.body.pages) {
         expect(page.illustration_url).toBeNull();
       }
+    });
+  });
+
+  describe('POST /api/books/:id/revise', () => {
+    beforeEach(() => {
+      mockCreate.mockReset();
+      process.env.ANTHROPIC_API_KEY = 'sk-test';
+    });
+
+    it('returns 401 without auth', async () => {
+      const res = await request(app)
+        .post('/api/books/luna-star-garden/revise')
+        .send({ feedback: 'make it more fun' });
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 404 if the book belongs to another user', async () => {
+      const token = await createUserAndGetToken(app);
+
+      const res = await request(app)
+        .post('/api/books/luna-star-garden/revise')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ feedback: 'make it more fun' });
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 400 if feedback is missing or empty', async () => {
+      const token = await createUserAndGetToken(app);
+
+      const missing = await request(app)
+        .post('/api/books/luna-star-garden/revise')
+        .set('Authorization', `Bearer ${token}`)
+        .send({});
+      expect(missing.status).toBe(400);
+
+      const empty = await request(app)
+        .post('/api/books/luna-star-garden/revise')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ feedback: '   ' });
+      expect(empty.status).toBe(400);
+    });
+
+    it('clears illustration_url on a page whose text changes', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { status: 'draft', created_by: user!.id },
+      });
+      // Give page 1 an illustration_url that should be wiped by the revision.
+      await prisma.page.update({
+        where: { book_id_page_number: { book_id: 'luna-star-garden', page_number: 1 } },
+        data: { illustration_url: 'https://example.com/old.png' },
+      });
+
+      // Claude returns a 5-page response where page 1 text changes,
+      // pages 2-5 keep their original text + illustration_description.
+      mockClaudeReviseResponse([
+        { text: 'NEW page 1 text', illustrationDescription: 'NEW illust 1' },
+        { text: 'Page 2 text', illustrationDescription: 'Illustration 2' },
+        { text: 'Page 3 text', illustrationDescription: 'Illustration 3' },
+        { text: 'Page 4 text', illustrationDescription: 'Illustration 4' },
+        { text: 'Page 5 text', illustrationDescription: 'Illustration 5' },
+      ]);
+
+      const res = await request(app)
+        .post('/api/books/luna-star-garden/revise')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ feedback: 'rewrite page 1' });
+      expect(res.status).toBe(200);
+
+      const page1 = res.body.pages.find((p: { page_number: number }) => p.page_number === 1);
+      expect(page1).toBeDefined();
+      expect(page1.text).toBe('NEW page 1 text');
+      expect(page1.illustration_url).toBeNull();
     });
   });
 

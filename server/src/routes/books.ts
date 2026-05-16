@@ -110,6 +110,28 @@ router.put('/:id/publish', async (req: Request<{ id: string }>, res: Response) =
   res.json(hydrateBook(updated));
 });
 
+router.put('/:id/unpublish', async (req: Request<{ id: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+  if (book.status !== 'published') {
+    return res.status(403).json({ error: 'Book is not published' });
+  }
+
+  const updated = await prisma.book.update({
+    where: { id: req.params.id },
+    data: { status: 'draft' },
+  });
+
+  res.json(hydrateBook(updated));
+});
+
 router.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
   const user = await getAuthUser(req);
   if (!user) {
@@ -285,14 +307,23 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
     const newVersion = book.version + 1;
     const finalPageCount = revised.pages.length;
 
-    // Update pages that exist in both old and new (preserve illustration_url)
+    // Update pages that exist in both old and new. If either the text or the
+    // illustration description changed for a page, also clear illustration_url:
+    // the old image no longer matches the revised content, so showing it would
+    // be a text/image mismatch (same reasoning as the version restore handler).
     const overlap = Math.min(finalPageCount, currentPageCount);
     for (let i = 0; i < overlap; i++) {
+      const oldPage = book.pages[i];
+      const newText = revised.pages[i].text;
+      const newDescription = revised.pages[i].illustrationDescription;
+      const contentChanged =
+        newText !== oldPage.text || newDescription !== oldPage.illustration_description;
       await prisma.page.update({
         where: { book_id_page_number: { book_id: book.id, page_number: i + 1 } },
         data: {
-          text: revised.pages[i].text,
-          illustration_description: revised.pages[i].illustrationDescription,
+          text: newText,
+          illustration_description: newDescription,
+          ...(contentChanged ? { illustration_url: null } : {}),
         },
       });
     }
@@ -471,6 +502,8 @@ router.post('/:id/illustrate', async (req: Request<{ id: string }>, res: Respons
     return res.status(400).json({ error: 'No pages to illustrate' });
   }
 
+  const hydratedBook = hydrateBook(book);
+
   try {
     for (const page of pagesToIllustrate) {
       const url = await generateIllustration(
@@ -479,6 +512,7 @@ router.post('/:id/illustrate', async (req: Request<{ id: string }>, res: Respons
         page.illustration_description,
         pageNumber ? feedback : undefined,
         book.style_descriptor,
+        hydratedBook.characters,
       );
 
       if (url) {
