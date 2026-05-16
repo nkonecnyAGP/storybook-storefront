@@ -277,6 +277,8 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
         book_id: book.id,
         version: book.version,
         pages_json: JSON.stringify(currentPages),
+        description: book.description,
+        characters_json: book.characters_json,
       },
     });
 
@@ -325,6 +327,96 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
     console.error('Revision error:', err);
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: 'Failed to revise story. ' + message });
+  }
+});
+
+router.put('/:id/versions/:version/restore', async (req: Request<{ id: string; version: string }>, res: Response) => {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const targetVersion = parseInt(req.params.version, 10);
+  if (!Number.isFinite(targetVersion) || targetVersion < 1) {
+    return res.status(400).json({ error: 'invalid version' });
+  }
+
+  const book = await prisma.book.findUnique({
+    where: { id: req.params.id },
+    include: { pages: { orderBy: { page_number: 'asc' } } },
+  });
+
+  if (!book || book.created_by !== user.id) {
+    return res.status(404).json({ error: 'Book not found' });
+  }
+  if (book.status !== 'draft') {
+    return res.status(403).json({ error: 'Books can only be restored while in draft' });
+  }
+
+  const snapshot = await prisma.bookVersion.findUnique({
+    where: { book_id_version: { book_id: book.id, version: targetVersion } },
+  });
+  if (!snapshot) {
+    return res.status(404).json({ error: 'Version not found' });
+  }
+
+  try {
+    // Snapshot current state before mutating, so restore is itself reversible.
+    const currentPages = book.pages.map(p => ({
+      page_number: p.page_number,
+      text: p.text,
+      illustrationDescription: p.illustration_description,
+    }));
+    await prisma.bookVersion.create({
+      data: {
+        book_id: book.id,
+        version: book.version,
+        pages_json: JSON.stringify(currentPages),
+        description: book.description,
+        characters_json: book.characters_json,
+      },
+    });
+
+    const restoredPages = JSON.parse(snapshot.pages_json) as {
+      page_number: number;
+      text: string;
+      illustrationDescription: string;
+    }[];
+
+    // Replace pages with the snapshot. illustration_url is intentionally
+    // reset to null on every restored page: the old image URLs no longer
+    // correspond to the restored text/description, so showing them would
+    // be misleading. The user can re-illustrate as needed.
+    await prisma.page.deleteMany({ where: { book_id: book.id } });
+    for (const p of restoredPages) {
+      await prisma.page.create({
+        data: {
+          book_id: book.id,
+          page_number: p.page_number,
+          text: p.text,
+          illustration_description: p.illustrationDescription,
+          illustration_url: null,
+        },
+      });
+    }
+
+    const updated = await prisma.book.update({
+      where: { id: book.id },
+      data: {
+        version: book.version + 1,
+        // Only restore description/characters when the snapshot has them —
+        // versions created before the snapshot was expanded will be null.
+        ...(snapshot.description !== null ? { description: snapshot.description } : {}),
+        ...(snapshot.characters_json !== null ? { characters_json: snapshot.characters_json } : {}),
+      },
+      include: { pages: { orderBy: { page_number: 'asc' } } },
+    });
+
+    res.json(hydrateBook(updated));
+  } catch (err: unknown) {
+    console.error('Restore error:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: 'Failed to restore version. ' + message });
   }
 });
 

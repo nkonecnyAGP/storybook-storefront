@@ -48,11 +48,13 @@ model Book {
 }
 
 model BookVersion {
-  id         Int      @id @default(autoincrement())
-  book_id    String
-  version    Int
-  pages_json String
-  created_at DateTime @default(now())
+  id              Int      @id @default(autoincrement())
+  book_id         String
+  version         Int
+  pages_json      String
+  description     String?
+  characters_json String?
+  created_at      DateTime @default(now())
 
   book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 

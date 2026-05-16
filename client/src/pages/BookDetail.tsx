@@ -1,10 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight, Send, Loader2, RefreshCw, Paintbrush, Image, BookOpen, FileText } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight, Send, Loader2, RefreshCw, Paintbrush, Image, BookOpen, FileText, History, RotateCcw } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
-import type { BookWithPages, Page } from '../types'
+import type { BookWithPages, BookVersion, Page } from '../types'
 import BookSpread from '../components/BookSpread'
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return iso
+  const diffMs = Date.now() - then
+  const sec = Math.round(diffMs / 1000)
+  if (sec < 60) return 'just now'
+  const min = Math.round(sec / 60)
+  if (min < 60) return `${min}m ago`
+  const hr = Math.round(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const day = Math.round(hr / 24)
+  if (day < 30) return `${day}d ago`
+  return new Date(iso).toLocaleDateString()
+}
 
 export default function BookDetail() {
   const { id } = useParams<{ id: string }>()
@@ -23,6 +38,11 @@ export default function BookDetail() {
   const [illustrationVersions, setIllustrationVersions] = useState<string[]>([])
   const [showVersions, setShowVersions] = useState(false)
   const [viewMode, setViewMode] = useState<'spread' | 'reader'>('spread')
+  const [versions, setVersions] = useState<BookVersion[]>([])
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [versionsError, setVersionsError] = useState('')
+  const [restoringVersion, setRestoringVersion] = useState<number | null>(null)
+  const [restoreError, setRestoreError] = useState('')
 
   const fetchBook = () => {
     const headers: Record<string, string> = {}
@@ -33,6 +53,35 @@ export default function BookDetail() {
   }
 
   useEffect(() => { fetchBook() }, [id, user])
+
+  const fetchVersions = useCallback(async (bookId: string, token: string) => {
+    setVersionsLoading(true)
+    setVersionsError('')
+    try {
+      const res = await fetch(`/api/books/${bookId}/versions`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error || 'Failed to load version history')
+      }
+      const data = await res.json() as BookVersion[]
+      setVersions(data)
+    } catch (err) {
+      setVersionsError(err instanceof Error ? err.message : 'Failed to load version history')
+    } finally {
+      setVersionsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!book || !user?.token) return
+    const owner = book.created_by === user.id
+    const draft = book.status === 'draft'
+    if (owner && draft) {
+      void fetchVersions(book.id, user.token)
+    }
+  }, [book, user, fetchVersions])
 
   if (loading) return <div className="text-center py-20 text-gray-400 text-lg">Loading...</div>
   if (!book) return <div className="text-center py-20 text-gray-400 text-lg">Book not found</div>
@@ -76,6 +125,34 @@ export default function BookDetail() {
       setReviseError(err instanceof Error ? err.message : 'Revision failed')
     } finally {
       setRevising(false)
+    }
+  }
+
+  const handleRestore = async (version: number) => {
+    if (!user) return
+    const proceed = window.confirm(
+      `Restore version ${version}? This replaces the current story text and illustration prompts. Illustrations on changed pages will be cleared and need to be regenerated.`
+    )
+    if (!proceed) return
+    setRestoringVersion(version)
+    setRestoreError('')
+    try {
+      const res = await fetch(`/api/books/${book.id}/versions/${version}/restore`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${user.token}` },
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error || 'Failed to restore version')
+      }
+      const updated = await res.json() as BookWithPages
+      setBook(updated)
+      setCurrentPage(0)
+      await fetchVersions(book.id, user.token)
+    } catch (err) {
+      setRestoreError(err instanceof Error ? err.message : 'Failed to restore version')
+    } finally {
+      setRestoringVersion(null)
     }
   }
 
@@ -494,6 +571,85 @@ export default function BookDetail() {
               )}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Version History — draft + owner only */}
+      {isOwner && isDraft && (
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg p-8 transition-colors mt-8">
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 font-display mb-2">
+            <History size={22} className="inline mr-2 text-purple-500" />
+            Version history
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">
+            Restore a previous draft of the story. Illustrations on changed pages will be cleared.
+          </p>
+
+          {versionsLoading && (
+            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm py-2">
+              <Loader2 size={16} className="animate-spin" />
+              Loading version history...
+            </div>
+          )}
+
+          {versionsError && !versionsLoading && (
+            <div className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 p-3 rounded-xl text-sm">
+              {versionsError}
+            </div>
+          )}
+
+          {!versionsLoading && !versionsError && versions.length <= 1 && (
+            <p className="text-sm text-gray-400 dark:text-gray-500 italic">
+              No previous versions yet. Revise the story to create one.
+            </p>
+          )}
+
+          {!versionsLoading && !versionsError && versions.length > 1 && (
+            <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+              {versions.slice(1).map(v => (
+                <li
+                  key={v.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center justify-center min-w-[2.5rem] px-2 py-1 rounded-full text-xs font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                      v{v.version}
+                    </span>
+                    <span className="text-sm text-gray-700 dark:text-gray-200">
+                      {v.pages.length} {v.pages.length === 1 ? 'page' : 'pages'}
+                    </span>
+                    <span className="text-sm text-gray-400 dark:text-gray-500">
+                      {formatRelativeTime(v.created_at)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => void handleRestore(v.version)}
+                    disabled={restoringVersion !== null}
+                    aria-label={`Restore version ${v.version}`}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 cursor-pointer border-none disabled:opacity-40 disabled:cursor-default"
+                  >
+                    {restoringVersion === v.version ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Restoring...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw size={14} />
+                        Restore
+                      </>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {restoreError && (
+            <div className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 p-3 rounded-xl mt-3 text-sm">
+              {restoreError}
+            </div>
+          )}
         </div>
       )}
     </div>

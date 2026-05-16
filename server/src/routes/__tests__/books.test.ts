@@ -170,6 +170,160 @@ describe('Books API routes', () => {
     });
   });
 
+  describe('PUT /api/books/:id/versions/:version/restore', () => {
+    async function setupDraftWithSnapshot(token: string) {
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: {
+          status: 'draft',
+          created_by: user!.id,
+          version: 2,
+          description: 'Current description',
+          characters_json: JSON.stringify([{ role: 'primary', name: 'Luna' }]),
+        },
+      });
+
+      // Give the current draft pages an illustration_url so we can assert
+      // the restore wipes them.
+      await prisma.page.updateMany({
+        where: { book_id: 'luna-star-garden' },
+        data: { illustration_url: 'https://example.com/current.png' },
+      });
+
+      // Insert a v1 snapshot with different content + page count.
+      const snapshotPages = [
+        { page_number: 1, text: 'Old page 1', illustrationDescription: 'Old illust 1' },
+        { page_number: 2, text: 'Old page 2', illustrationDescription: 'Old illust 2' },
+        { page_number: 3, text: 'Old page 3', illustrationDescription: 'Old illust 3' },
+      ];
+      await prisma.bookVersion.create({
+        data: {
+          book_id: 'luna-star-garden',
+          version: 1,
+          pages_json: JSON.stringify(snapshotPages),
+          description: 'Original description',
+          characters_json: JSON.stringify([{ role: 'primary', name: 'OldLuna' }]),
+        },
+      });
+
+      return { user: user!, token, snapshotPages };
+    }
+
+    it('returns 401 without auth', async () => {
+      const res = await request(app).put('/api/books/luna-star-garden/versions/1/restore');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 404 if book does not exist', async () => {
+      const token = await createUserAndGetToken(app);
+      const res = await request(app)
+        .put('/api/books/nope/versions/1/restore')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 404 for another user\'s book', async () => {
+      const ownerToken = await createUserAndGetToken(app);
+      await setupDraftWithSnapshot(ownerToken);
+
+      // Register a second user and try to restore using their token.
+      const otherRes = await request(app).post('/api/auth/register').send({
+        email: 'intruder@example.com',
+        name: 'Intruder',
+        password: 'pass1234',
+      });
+      const otherToken = otherRes.body.token as string;
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/versions/1/restore')
+        .set('Authorization', `Bearer ${otherToken}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 403 if book is not in draft status', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { status: 'published', created_by: user!.id, version: 2 },
+      });
+      await prisma.bookVersion.create({
+        data: {
+          book_id: 'luna-star-garden',
+          version: 1,
+          pages_json: JSON.stringify([]),
+        },
+      });
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/versions/1/restore')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 404 if the version row does not exist', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { status: 'draft', created_by: user!.id, version: 2 },
+      });
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/versions/99/restore')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('restores pages and description, bumps version, snapshots prior state', async () => {
+      const token = await createUserAndGetToken(app);
+      const { snapshotPages } = await setupDraftWithSnapshot(token);
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/versions/1/restore')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+
+      expect(res.body.description).toBe('Original description');
+      expect(res.body.version).toBe(3);
+      expect(res.body.characters).toEqual([{ role: 'primary', name: 'OldLuna' }]);
+      expect(res.body.pages).toHaveLength(snapshotPages.length);
+      expect(res.body.pages.map((p: { text: string }) => p.text)).toEqual(
+        snapshotPages.map(p => p.text),
+      );
+
+      // A fresh BookVersion snapshotting the pre-restore state should exist.
+      const versions = await prisma.bookVersion.findMany({
+        where: { book_id: 'luna-star-garden' },
+        orderBy: { version: 'asc' },
+      });
+      expect(versions).toHaveLength(2);
+      const preRestoreSnapshot = versions.find(v => v.version === 2);
+      expect(preRestoreSnapshot).toBeDefined();
+      expect(preRestoreSnapshot!.description).toBe('Current description');
+      const preRestorePages = JSON.parse(preRestoreSnapshot!.pages_json) as {
+        text: string;
+      }[];
+      expect(preRestorePages).toHaveLength(5);
+      expect(preRestorePages[0].text).toBe('Page 1 text');
+    });
+
+    it('clears illustration_url on every restored page', async () => {
+      const token = await createUserAndGetToken(app);
+      await setupDraftWithSnapshot(token);
+
+      const res = await request(app)
+        .put('/api/books/luna-star-garden/versions/1/restore')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+
+      for (const page of res.body.pages) {
+        expect(page.illustration_url).toBeNull();
+      }
+    });
+  });
+
   describe('DELETE /api/books/:id', () => {
     it('deletes a book owned by the user', async () => {
       const token = await createUserAndGetToken(app);
