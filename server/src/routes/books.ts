@@ -53,6 +53,7 @@ router.get('/mine', async (req: Request, res: Response) => {
   }
   const books = await prisma.book.findMany({
     where: { created_by: user.id },
+    include: { pages: { orderBy: { page_number: 'asc' } } },
   });
   res.json(books.map(hydrateBook));
 });

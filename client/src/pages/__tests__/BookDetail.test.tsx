@@ -135,6 +135,7 @@ function setupFetchMock(opts: {
   book?: BookWithPages
   versions?: BookVersion[]
   restored?: BookWithPages
+  illustrationVersions?: string[]
 }) {
   const calls: FetchCall[] = []
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
@@ -161,6 +162,14 @@ function setupFetchMock(opts: {
     if (/^\/api\/books\/book-1\/versions\/\d+\/restore$/.test(url) && method === 'PUT') {
       return Promise.resolve(
         new Response(JSON.stringify(opts.restored ?? restoredBook), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    }
+    if (/^\/api\/books\/book-1\/illustrations\/\d+$/.test(url) && method === 'GET') {
+      return Promise.resolve(
+        new Response(JSON.stringify(opts.illustrationVersions ?? []), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
@@ -271,5 +280,73 @@ describe('BookDetail — Version History', () => {
     // No restore call should have been made.
     const restoreCall = calls.find(c => c.url.includes('/restore'))
     expect(restoreCall).toBeUndefined()
+  })
+})
+
+describe('BookDetail — Illustration history active indicator', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const currentUrl = '/uploads/illustrations/current.png'
+  const olderUrl = '/uploads/illustrations/older.png'
+
+  const illustratedBook: BookWithPages = {
+    ...baseBook,
+    pages: [
+      {
+        id: 1,
+        book_id: 'book-1',
+        page_number: 1,
+        text: 'Page 1 text',
+        illustration_description: 'desc 1',
+        illustration_url: currentUrl,
+      },
+      {
+        id: 2,
+        book_id: 'book-1',
+        page_number: 2,
+        text: 'Page 2 text',
+        illustration_description: 'desc 2',
+        illustration_url: null,
+      },
+    ],
+  }
+
+  it('marks the active thumbnail with a "Current" badge and renders non-active as revert buttons', async () => {
+    setupFetchMock({
+      book: illustratedBook,
+      illustrationVersions: [currentUrl, olderUrl],
+    })
+
+    renderBookDetail()
+
+    // Switch to reader view (mocked BookSpread covers default 'spread' view).
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /reader view/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /reader view/i }))
+
+    // Page 1 has an illustration; History button should be available.
+    const historyBtn = await screen.findByRole('button', { name: /^history$/i })
+    fireEvent.click(historyBtn)
+
+    // After load, the carousel should render. The current thumbnail is the
+    // one whose URL equals page.illustration_url -> it gets the "Current"
+    // badge and is NOT a button. The older one IS a button.
+    await waitFor(() => {
+      expect(screen.getByText('Current')).toBeInTheDocument()
+    })
+
+    // Non-active should be a button labelled "Revert to version 2".
+    expect(screen.getByRole('button', { name: /revert to version 2/i })).toBeInTheDocument()
+
+    // The active version should NOT be a button (so clicking the already-
+    // active version is a no-op / not even rendered as one).
+    expect(screen.queryByRole('button', { name: /revert to version 1/i })).not.toBeInTheDocument()
   })
 })

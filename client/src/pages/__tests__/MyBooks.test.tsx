@@ -2,7 +2,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import MyBooks from '../MyBooks'
-import type { Book } from '../../types'
+import type { Book, Page } from '../../types'
+
+type BookWithMaybePages = Book & { pages?: Page[] }
 
 const mockUser = {
   id: 'user-1',
@@ -53,7 +55,7 @@ interface FetchCall {
 }
 
 function setupFetchMock(opts: {
-  books?: Book[]
+  books?: BookWithMaybePages[]
   unpublished?: Book
   unpublishStatus?: number
 } = {}) {
@@ -163,5 +165,62 @@ describe('MyBooks — Unpublish', () => {
     expect(unpublishCall).toBeUndefined()
     // Card still shows Published.
     expect(screen.getByText('Published')).toBeInTheDocument()
+  })
+})
+
+describe('MyBooks — Unillustrated badge', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const makePage = (page_number: number, illustration_url: string | null): Page => ({
+    id: page_number,
+    book_id: 'book-1',
+    page_number,
+    text: `Page ${page_number} text`,
+    illustration_description: `Page ${page_number} description`,
+    illustration_url,
+  })
+
+  it('shows "{N} unillustrated" badge on a draft with pages missing illustrations', async () => {
+    const draftWithPages: BookWithMaybePages = {
+      ...unpublishedBook,
+      pages: [
+        makePage(1, null),
+        makePage(2, null),
+        makePage(3, 'https://example.com/3.png'),
+      ],
+    }
+    setupFetchMock({ books: [draftWithPages] })
+
+    renderMyBooks()
+
+    await waitFor(() => {
+      expect(screen.getByText('Draft')).toBeInTheDocument()
+    })
+    expect(screen.getByText('2 unillustrated')).toBeInTheDocument()
+  })
+
+  it('does NOT show the unillustrated badge when all pages have illustrations', async () => {
+    const draftAllIllustrated: BookWithMaybePages = {
+      ...unpublishedBook,
+      pages: [
+        makePage(1, 'https://example.com/1.png'),
+        makePage(2, 'https://example.com/2.png'),
+        makePage(3, 'https://example.com/3.png'),
+      ],
+    }
+    setupFetchMock({ books: [draftAllIllustrated] })
+
+    renderMyBooks()
+
+    await waitFor(() => {
+      expect(screen.getByText('Draft')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/unillustrated/i)).not.toBeInTheDocument()
   })
 })

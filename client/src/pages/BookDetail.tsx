@@ -397,6 +397,10 @@ export default function BookDetail() {
           onEditPrompt={handleEditPrompt}
           revising={revising}
           reviseError={reviseError}
+          onShowVersions={loadVersions}
+          illustrationVersions={illustrationVersions}
+          showVersions={showVersions}
+          onRevertIllustration={revertIllustration}
         />
       )}
 
@@ -448,19 +452,33 @@ export default function BookDetail() {
                       </div>
                       {showVersions && illustrationVersions.length > 1 && (
                         <div className="flex gap-2 overflow-x-auto pb-1">
-                          {illustrationVersions.map((url, i) => (
-                            <button
-                              key={url}
-                              onClick={() => void revertIllustration(page.page_number, url)}
-                              className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer ${
-                                url === page.illustration_url
-                                  ? 'border-purple-500'
-                                  : 'border-gray-200 dark:border-gray-600 hover:border-purple-300'
-                              }`}
-                            >
-                              <img src={`http://localhost:3001${url}`} alt={`Version ${i + 1}`} className="w-full h-full object-cover" />
-                            </button>
-                          ))}
+                          {illustrationVersions.map((url, i) => {
+                            const isActive = url === page.illustration_url
+                            if (isActive) {
+                              return (
+                                <div
+                                  key={url}
+                                  className="relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 border-purple-500 ring-2 ring-purple-400 dark:ring-purple-500"
+                                  aria-label={`Version ${i + 1} (current)`}
+                                >
+                                  <img src={`http://localhost:3001${url}`} alt={`Version ${i + 1}`} className="w-full h-full object-cover" />
+                                  <span className="absolute bottom-0 left-0 right-0 bg-purple-500 text-white text-[10px] font-bold text-center py-0.5">
+                                    Current
+                                  </span>
+                                </div>
+                              )
+                            }
+                            return (
+                              <button
+                                key={url}
+                                onClick={() => void revertIllustration(page.page_number, url)}
+                                aria-label={`Revert to version ${i + 1}`}
+                                className="shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer border-gray-200 dark:border-gray-600 hover:border-purple-300"
+                              >
+                                <img src={`http://localhost:3001${url}`} alt={`Version ${i + 1}`} className="w-full h-full object-cover" />
+                              </button>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
