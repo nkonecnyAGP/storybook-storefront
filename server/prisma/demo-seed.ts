@@ -27,35 +27,19 @@ const DEMO_PASSWORD = 'demo!2026';
 
 const ILLUSTRATIONS_DIR = join(__dirname, '../public/illustrations');
 
-// Orphaned image directories with a "stub" of what we know about each book.
-// The image folder name becomes the Book.id so illustration_url paths match.
+// Demo books were previously rebuilt from orphaned illustration directories
+// via Claude vision. The owner judged the results low-quality and is going to
+// replace them with examples generated through the in-app story generator.
+// Until that happens, the seed creates the demo user only — no books.
+// See docs/backlog.md "Replace demo-seed examples" for the follow-up.
 interface DemoBookStub {
   id: string;
   pages: number;
   hasCover: boolean;
-  hint: string; // narrative hint passed to Claude to anchor the story
+  hint: string;
 }
 
-const DEMO_BOOKS: DemoBookStub[] = [
-  {
-    id: '07ca3e52-2087-4ab4-b71a-a66db50eee9d',
-    pages: 5,
-    hasCover: true,
-    hint: 'A whimsical children\'s story. Use the illustrations to determine the primary character, setting, theme, and arc.',
-  },
-  {
-    id: '263224ec-e7de-4d43-920b-f9177bea3955',
-    pages: 5,
-    hasCover: true,
-    hint: 'A warm children\'s story. Use the illustrations to determine the primary character, setting, theme, and arc.',
-  },
-  {
-    id: '458b629f-732b-4f0f-ab8d-aaf88d1e945a',
-    pages: 5,
-    hasCover: false,
-    hint: 'A humorous, kid-friendly story about Philip J. Phart, a boy whose enormous toots cause comedic mishaps. Cover is missing — derive cover_emoji and cover_color from the page images.',
-  },
-];
+const DEMO_BOOKS: DemoBookStub[] = [];
 
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
