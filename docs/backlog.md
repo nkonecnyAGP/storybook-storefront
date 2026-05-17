@@ -15,7 +15,7 @@ Sequential dependency chain — each item unblocks the next.
 
 ## Tier 2 — Storefront & Research
 
-- [ ] **T2.5** — Enhanced browse experience (search, better filtering, community creations, book preview)
+- [x] **T2.5** — Enhanced browse experience (search, better filtering, community creations, book preview) — already shipped: Home.tsx has search, theme + age range chips, Featured + Community sections, BookPreviewModal, with Home unit and e2e coverage
 - [x] **T2.6** — Research: illustration APIs and cost models → `.code-captain/product/illustration-providers-and-character-consistency.md`
 - [x] **T2.7** — Research: marketing strategies → `docs/marketing-research.md`
 - [x] **T2.8** — Research: print/publishing options → `docs/print-publishing-research.md`
