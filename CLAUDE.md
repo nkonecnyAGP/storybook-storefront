@@ -1,71 +1,77 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code sessions working in StoryBook Storefront.
 
-## Project Overview
+## Project
 
-StoryBook Storefront — an AI-powered children's book store built with React + Express + Claude API. Users browse, create personalized stories, and purchase books. JSON file persistence (`data.json`), session-based cart via localStorage UUIDs.
+AI-powered children's book store. React + Express + Claude API. Working storefront with creation workflow being built out. Demo-grade product concept.
 
-## Monorepo Layout
+**Current focus:** see [docs/backlog.md](docs/backlog.md). Tier 1 is the dependency chain: versioning → story iteration → illustration generation → illustration iteration.
 
-| Directory | Stack | Purpose |
-|-----------|-------|---------|
-| `client/` | React 19, Vite 8, Tailwind CSS 4, TypeScript | SPA frontend |
-| `server/` | Express 4, TypeScript, tsx, Anthropic SDK | REST API + AI generation |
-| `e2e/` | Playwright 1.52, TypeScript | End-to-end tests |
+## Layout
 
-## Build & Run
+| Directory | Stack | Owner agent | Zone rules |
+|-----------|-------|-------------|------------|
+| `client/` | React 19, Vite 8, Tailwind 4, TS | @storefront | `.claude/agents/storefront.md` |
+| `server/` | Express 4, TS, Anthropic SDK | @booksmith | `.claude/agents/booksmith.md` |
+| `e2e/` | Playwright 1.52, TS | @qa | `.claude/agents/qa.md` |
+| `docs/` | Backlog, research notes | — | — |
+
+## Build & run
 
 ```bash
-npm run dev                          # Start both client (:5173) and server (:3001)
-npm run dev:client                   # Client only
-npm run dev:server                   # Server only
+npm run dev                          # both client (:5173) and server (:3001)
+npm run dev:client
+npm run dev:server
 ```
 
 ## Testing
 
 ```bash
-# Server unit/integration (Vitest + Supertest)
-cd server && npm test
-
-# Client unit (Vitest + React Testing Library)
-cd client && npm test
-
-# E2E (Playwright — auto-starts both servers)
-cd e2e && npm test
-cd e2e && npm run test:headed        # With browser visible
-cd e2e && npm run test:ui            # Interactive UI mode
+cd server && npm test                # Vitest + Supertest (33 tests)
+cd client && npm test                # Vitest + RTL (19 tests)
+cd e2e && npm test                   # Playwright (20 tests)
+cd e2e && npm run test:headed
+cd e2e && npm run test:ui
 ```
 
-## Key Conventions
+## Delegation rules (opinionated)
 
-- **TypeScript strict** on both client and server
-- **Tailwind CSS v4** — uses `@import "tailwindcss"` and `@custom-variant dark` (not v3 `darkMode` config)
-- **Dark mode** — `ThemeContext` toggles `.dark` class on `<html>`, all components use `dark:` variants
-- **Cart sessions** — UUID stored in localStorage (`storybook-session`), passed to `/api/cart/:sessionId`
-- **JSON store** — `server/src/db/init.ts` with `getStore()`/`save()` pattern, persists to `data.json`
-- **Claude API** — model `claude-sonnet-4-6` in `server/src/routes/generate.ts`, generates 5-page stories
-- **Corporate proxy** — `process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'` at top of `server/src/index.ts`
+For any non-trivial change in a zone, **delegate to the owning agent** rather than editing directly:
 
-## API Structure
+- `client/**` → **@storefront**
+- `server/**` → **@booksmith**
+- Tests in any zone → **@qa**
 
-Routes in `server/src/routes/`: books.ts, cart.ts, orders.ts, generate.ts. Each exports an Express Router mounted at `/api/{name}`. Health check at `/api/health`.
+The main session orchestrates: reads for context, plans, delegates, then verifies. Small cross-cutting reads, 1-line fixes, and pure orchestration stay in the main session.
 
-## Data Model
+**Zone-specific conventions, stack details, and patterns live in each agent's `.md` file** — not duplicated here.
 
-Defined in `server/src/types.ts` and `client/src/types.ts`. Core entities: Book, Page (5 per book), CartItem, Order, OrderItem. Books have `is_user_created` flag (0 = seed, 1 = AI-generated).
+## Done criteria
 
-## E2E Test Patterns
+Don't claim a feature complete until:
+1. Relevant tests pass (server + client + e2e if a user-facing flow changed)
+2. UI changes manually verified in browser in **both** light and dark mode
+3. No TypeScript errors
+4. If `data.json` shape changed, confirm seed still loads cleanly
 
-- Wait for visible content, never `waitForResponse` after navigation
-- Use `getByRole()` and `getByText()` selectors — not CSS classes
-- Cart tests clear localStorage in `beforeEach` for isolation
-- Playwright config auto-starts both servers via `webServer[]`
+## Guardrails (cross-cutting)
 
-## Agents
+**Confirm with user before:**
+- Deleting or replacing `data.json` (use `resetStore()` for tests, never `rm`)
+- Changing seed data shape (breaks existing carts/orders)
+- Swapping the Claude model or upgrading SDK major versions
+- Adding new paid external APIs (image generation, payments)
+- Adding auth or session changes (UUID session model is load-bearing)
+- Deleting tests rather than fixing them
 
-Three specialized agents in `.claude/agents/`:
+**Safe to proceed without asking:**
+- UI tweaks, new components, additive routes, new tests
+- Refactoring within a single file
+- Dependencies that fit existing stack
 
-- **@storefront** — Frontend: React components, routing, Tailwind styling, contexts, dark mode
-- **@booksmith** — Backend: Express routes, data store, Claude API integration, story generation
-- **@qa** — Testing: Vitest unit/integration tests, Playwright e2e specs, test infrastructure
+## Pointers
+
+- **Backlog:** `docs/backlog.md`
+- **Research:** `docs/marketing-research.md`, `docs/print-publishing-research.md`
+- **Agent definitions:** `.claude/agents/{storefront,booksmith,qa}.md`
