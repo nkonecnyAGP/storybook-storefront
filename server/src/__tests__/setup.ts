@@ -4,6 +4,7 @@ import authRouter from '../routes/auth';
 import booksRouter from '../routes/books';
 import cartRouter from '../routes/cart';
 import ordersRouter from '../routes/orders';
+import adminRouter from '../routes/admin';
 
 const seedBooks = [
   { id: 'luna-star-garden', title: 'Luna and the Star Garden', author: 'AI Storybook', description: 'A story about stars.', theme: 'fantasy', age_range: '4-7', cover_emoji: '\u{1F31F}', cover_color: '#7c3aed', price: 19.99, is_featured: true, is_user_created: false },
@@ -56,6 +57,7 @@ export function createTestApp(): express.Express {
   app.use('/api/books', booksRouter);
   app.use('/api/cart', cartRouter);
   app.use('/api/orders', ordersRouter);
+  app.use('/api/admin', adminRouter);
 
   return app;
 }

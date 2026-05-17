@@ -546,7 +546,7 @@ describe('Books API routes', () => {
   });
 
   describe('DELETE /api/books/:id', () => {
-    it('deletes a book owned by the user', async () => {
+    it('soft-deletes a book owned by the user (row remains, deleted_at set)', async () => {
       const token = await createUserAndGetToken(app);
       const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
 
@@ -561,6 +561,13 @@ describe('Books API routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
 
+      // Row should still exist in the DB with deleted_at populated — that's
+      // the whole soft-delete contract.
+      const row = await prisma.book.findUnique({ where: { id: 'luna-star-garden' } });
+      expect(row).not.toBeNull();
+      expect(row?.deleted_at).not.toBeNull();
+
+      // ...but the public GET should 404 because of the deleted_at filter.
       const check = await request(app).get('/api/books/luna-star-garden');
       expect(check.status).toBe(404);
     });
@@ -577,6 +584,51 @@ describe('Books API routes', () => {
         .delete('/api/books/luna-star-garden')
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('soft-delete filtering on read endpoints', () => {
+    it('GET /api/books/:id returns 404 for soft-deleted books', async () => {
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { deleted_at: new Date() },
+      });
+
+      const res = await request(app).get('/api/books/luna-star-garden');
+      expect(res.status).toBe(404);
+    });
+
+    it('GET /api/books (catalog) excludes soft-deleted books', async () => {
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { deleted_at: new Date() },
+      });
+
+      const res = await request(app).get('/api/books');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(5);
+      expect(res.body.find((b: { id: string }) => b.id === 'luna-star-garden')).toBeUndefined();
+    });
+
+    it('GET /api/books/mine excludes soft-deleted books', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { created_by: user!.id },
+      });
+      await prisma.book.update({
+        where: { id: 'dinosaur-bakery' },
+        data: { created_by: user!.id, deleted_at: new Date() },
+      });
+
+      const res = await request(app)
+        .get('/api/books/mine')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe('luna-star-garden');
     });
   });
 });

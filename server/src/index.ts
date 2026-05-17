@@ -14,6 +14,7 @@ import generateRouter from './routes/generate';
 import cartRouter from './routes/cart';
 import ordersRouter from './routes/orders';
 import uploadsRouter from './routes/uploads';
+import adminRouter from './routes/admin';
 import testRouter from './routes/test';
 import { snapshotDb } from './db/snapshot';
 
@@ -33,6 +34,7 @@ app.use('/api/generate', generateRouter);
 app.use('/api/cart', cartRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/uploads', uploadsRouter);
+app.use('/api/admin', adminRouter);
 
 // Test-only routes for cleaning up state left by E2E specs. Mounted only
 // outside production; the handlers themselves also enforce a NODE_ENV check.

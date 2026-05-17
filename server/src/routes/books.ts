@@ -26,7 +26,7 @@ function hydrateBook<T extends BookRow>(book: T): T & { characters: Character[] 
 router.get('/', async (req: Request, res: Response) => {
   const { theme, age_range, featured, search } = req.query;
 
-  const where: Record<string, unknown> = { status: 'published' };
+  const where: Record<string, unknown> = { status: 'published', deleted_at: null };
   if (theme) where.theme = theme;
   if (age_range) where.age_range = age_range;
   if (featured === 'true') where.is_featured = true;
@@ -52,27 +52,27 @@ router.get('/mine', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   const books = await prisma.book.findMany({
-    where: { created_by: user.id },
+    where: { created_by: user.id, deleted_at: null },
     include: { pages: { orderBy: { page_number: 'asc' } } },
   });
   res.json(books.map(hydrateBook));
 });
 
 router.get('/themes', async (_req: Request, res: Response) => {
-  const books = await prisma.book.findMany({ select: { theme: true } });
+  const books = await prisma.book.findMany({ where: { deleted_at: null }, select: { theme: true } });
   const themes = [...new Set(books.map(b => b.theme))].sort();
   res.json(themes);
 });
 
 router.get('/age-ranges', async (_req: Request, res: Response) => {
-  const books = await prisma.book.findMany({ select: { age_range: true } });
+  const books = await prisma.book.findMany({ where: { deleted_at: null }, select: { age_range: true } });
   const ranges = [...new Set(books.map(b => b.age_range))].sort();
   res.json(ranges);
 });
 
 router.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
-  const book = await prisma.book.findUnique({
-    where: { id: req.params.id },
+  const book = await prisma.book.findFirst({
+    where: { id: req.params.id, deleted_at: null },
     include: {
       pages: { orderBy: { page_number: 'asc' } },
     },
@@ -98,7 +98,7 @@ router.put('/:id/publish', async (req: Request<{ id: string }>, res: Response) =
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  const book = await prisma.book.findFirst({ where: { id: req.params.id, deleted_at: null } });
   if (!book || book.created_by !== user.id) {
     return res.status(404).json({ error: 'Book not found' });
   }
@@ -117,7 +117,7 @@ router.put('/:id/unpublish', async (req: Request<{ id: string }>, res: Response)
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  const book = await prisma.book.findFirst({ where: { id: req.params.id, deleted_at: null } });
   if (!book || book.created_by !== user.id) {
     return res.status(404).json({ error: 'Book not found' });
   }
@@ -139,12 +139,18 @@ router.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  const book = await prisma.book.findFirst({ where: { id: req.params.id, deleted_at: null } });
   if (!book || book.created_by !== user.id) {
     return res.status(404).json({ error: 'Book not found' });
   }
 
-  await prisma.book.delete({ where: { id: req.params.id } });
+  // Soft-delete so admins can restore later and existing carts/orders still
+  // resolve their book references. Hard deletes are reserved for the test-only
+  // cleanup endpoint.
+  await prisma.book.update({
+    where: { id: req.params.id },
+    data: { deleted_at: new Date() },
+  });
   res.json({ success: true });
 });
 
@@ -167,7 +173,7 @@ router.put('/:id/pages/:pageNumber', async (req: Request<{ id: string; pageNumbe
     return res.status(400).json({ error: 'illustration_description must be 2000 characters or fewer' });
   }
 
-  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  const book = await prisma.book.findFirst({ where: { id: req.params.id, deleted_at: null } });
   if (!book || book.created_by !== user.id) {
     return res.status(404).json({ error: 'Book not found' });
   }
@@ -202,8 +208,8 @@ router.post('/:id/revise', async (req: Request<{ id: string }>, res: Response) =
     return res.status(400).json({ error: 'feedback is required' });
   }
 
-  const book = await prisma.book.findUnique({
-    where: { id: req.params.id },
+  const book = await prisma.book.findFirst({
+    where: { id: req.params.id, deleted_at: null },
     include: { pages: { orderBy: { page_number: 'asc' } } },
   });
 
@@ -373,8 +379,8 @@ router.put('/:id/versions/:version/restore', async (req: Request<{ id: string; v
     return res.status(400).json({ error: 'invalid version' });
   }
 
-  const book = await prisma.book.findUnique({
-    where: { id: req.params.id },
+  const book = await prisma.book.findFirst({
+    where: { id: req.params.id, deleted_at: null },
     include: { pages: { orderBy: { page_number: 'asc' } } },
   });
 
@@ -458,7 +464,7 @@ router.get('/:id/versions', async (req: Request<{ id: string }>, res: Response) 
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  const book = await prisma.book.findFirst({ where: { id: req.params.id, deleted_at: null } });
   if (!book || book.created_by !== user.id) {
     return res.status(404).json({ error: 'Book not found' });
   }
@@ -484,8 +490,8 @@ router.post('/:id/illustrate', async (req: Request<{ id: string }>, res: Respons
     return res.status(501).json({ error: 'Image generation not configured (OPENAI_API_KEY missing)' });
   }
 
-  const book = await prisma.book.findUnique({
-    where: { id: req.params.id },
+  const book = await prisma.book.findFirst({
+    where: { id: req.params.id, deleted_at: null },
     include: { pages: { orderBy: { page_number: 'asc' } } },
   });
 
@@ -543,7 +549,7 @@ router.get('/:id/illustrations/:pageNumber', async (req: Request<{ id: string; p
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  const book = await prisma.book.findFirst({ where: { id: req.params.id, deleted_at: null } });
   if (!book || book.created_by !== user.id) {
     return res.status(404).json({ error: 'Book not found' });
   }
@@ -558,7 +564,7 @@ router.put('/:id/illustrations/:pageNumber/revert', async (req: Request<{ id: st
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const book = await prisma.book.findUnique({ where: { id: req.params.id } });
+  const book = await prisma.book.findFirst({ where: { id: req.params.id, deleted_at: null } });
   if (!book || book.created_by !== user.id) {
     return res.status(404).json({ error: 'Book not found' });
   }
