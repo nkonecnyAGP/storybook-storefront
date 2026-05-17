@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, ShoppingCart, ChevronLeft, ChevronRight, Send, Loader2, RefreshCw, Paintbrush, Image, BookOpen, FileText, History, RotateCcw } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
-import type { BookWithPages, BookVersion, Page } from '../types'
+import type { BookWithPages, BookVersion, IllustrationVersion, Page } from '../types'
 import BookSpread from '../components/BookSpread'
 
 function formatRelativeTime(iso: string): string {
@@ -35,7 +35,7 @@ export default function BookDetail() {
   const [illustrating, setIllustrating] = useState(false)
   const [illustrateError, setIllustrateError] = useState('')
   const [illustrationFeedback, setIllustrationFeedback] = useState('')
-  const [illustrationVersions, setIllustrationVersions] = useState<string[]>([])
+  const [illustrationVersions, setIllustrationVersions] = useState<IllustrationVersion[]>([])
   const [showVersions, setShowVersions] = useState(false)
   const [viewMode, setViewMode] = useState<'spread' | 'reader'>('spread')
   const [versions, setVersions] = useState<BookVersion[]>([])
@@ -221,7 +221,7 @@ export default function BookDetail() {
       headers: { 'Authorization': `Bearer ${user.token}` },
     })
     if (res.ok) {
-      const versions = await res.json() as string[]
+      const versions = await res.json() as IllustrationVersion[]
       setIllustrationVersions(versions)
       setShowVersions(true)
     }
@@ -451,32 +451,51 @@ export default function BookDetail() {
                         </button>
                       </div>
                       {showVersions && illustrationVersions.length > 1 && (
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {illustrationVersions.map((url, i) => {
-                            const isActive = url === page.illustration_url
-                            if (isActive) {
-                              return (
-                                <div
-                                  key={url}
-                                  className="relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 border-purple-500 ring-2 ring-purple-400 dark:ring-purple-500"
-                                  aria-label={`Version ${i + 1} (current)`}
-                                >
-                                  <img src={`http://localhost:3001${url}`} alt={`Version ${i + 1}`} className="w-full h-full object-cover" />
-                                  <span className="absolute bottom-0 left-0 right-0 bg-purple-500 text-white text-[10px] font-bold text-center py-0.5">
-                                    Current
+                        <div className="flex gap-3 overflow-x-auto pb-1">
+                          {illustrationVersions.map(v => {
+                            const isActive = v.url === page.illustration_url
+                            const truncatedFeedback = v.feedback && v.feedback.length > 60
+                              ? `${v.feedback.slice(0, 60).trimEnd()}…`
+                              : v.feedback
+                            const thumb = isActive ? (
+                              <div
+                                className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-purple-500 ring-2 ring-purple-400 dark:ring-purple-500"
+                                aria-label={`Version ${v.version} (current)`}
+                              >
+                                <img src={`http://localhost:3001${v.url}`} alt={`Version ${v.version}`} className="w-full h-full object-cover" />
+                                <span className="absolute bottom-0 left-0 right-0 bg-purple-500 text-white text-[10px] font-bold text-center py-0.5">
+                                  Current
+                                </span>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => void revertIllustration(page.page_number, v.url)}
+                                aria-label={`Revert to version ${v.version}`}
+                                className="w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer border-gray-200 dark:border-gray-600 hover:border-purple-300 p-0"
+                              >
+                                <img src={`http://localhost:3001${v.url}`} alt={`Version ${v.version}`} className="w-full h-full object-cover" />
+                              </button>
+                            )
+                            return (
+                              <div key={v.url} className="shrink-0 flex flex-col gap-1 w-32">
+                                {thumb}
+                                <div className="flex items-center gap-1.5 text-[10px]">
+                                  <span className="inline-flex items-center justify-center px-1.5 rounded-full font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                                    v{v.version}
+                                  </span>
+                                  <span className="text-gray-500 dark:text-gray-400">
+                                    {formatRelativeTime(v.created_at)}
                                   </span>
                                 </div>
-                              )
-                            }
-                            return (
-                              <button
-                                key={url}
-                                onClick={() => void revertIllustration(page.page_number, url)}
-                                aria-label={`Revert to version ${i + 1}`}
-                                className="shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer border-gray-200 dark:border-gray-600 hover:border-purple-300"
-                              >
-                                <img src={`http://localhost:3001${url}`} alt={`Version ${i + 1}`} className="w-full h-full object-cover" />
-                              </button>
+                                {truncatedFeedback && (
+                                  <span
+                                    className="text-[10px] italic text-gray-500 dark:text-gray-400 truncate"
+                                    title={v.feedback ?? undefined}
+                                  >
+                                    “{truncatedFeedback}”
+                                  </span>
+                                )}
+                              </div>
                             )
                           })}
                         </div>

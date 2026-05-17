@@ -470,6 +470,81 @@ describe('Books API routes', () => {
     });
   });
 
+  describe('GET /api/books/:id/illustrations/:pageNumber', () => {
+    it('returns 401 without auth', async () => {
+      const res = await request(app).get('/api/books/luna-star-garden/illustrations/1');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 404 for another user\'s book', async () => {
+      const token = await createUserAndGetToken(app);
+      const res = await request(app)
+        .get('/api/books/luna-star-garden/illustrations/1')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('returns an empty array for a page with no illustrations and no files', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { created_by: user!.id },
+      });
+
+      const res = await request(app)
+        .get('/api/books/luna-star-garden/illustrations/1')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it('returns the enriched shape from IllustrationVersion rows', async () => {
+      const token = await createUserAndGetToken(app);
+      const user = await prisma.user.findFirst({ where: { email: 'author@example.com' } });
+      await prisma.book.update({
+        where: { id: 'luna-star-garden' },
+        data: { created_by: user!.id },
+      });
+
+      await prisma.illustrationVersion.createMany({
+        data: [
+          {
+            book_id: 'luna-star-garden',
+            page_number: 1,
+            version: 1,
+            url: '/illustrations/luna-star-garden/page-1.png',
+            feedback: null,
+          },
+          {
+            book_id: 'luna-star-garden',
+            page_number: 1,
+            version: 2,
+            url: '/illustrations/luna-star-garden/page-1-v2.png',
+            feedback: 'make the moon bigger',
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .get('/api/books/luna-star-garden/illustrations/1')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
+      for (const item of res.body) {
+        expect(item).toHaveProperty('url');
+        expect(item).toHaveProperty('version');
+        expect(item).toHaveProperty('created_at');
+        expect(item).toHaveProperty('feedback');
+      }
+      // versions sorted ascending
+      expect(res.body[0].version).toBe(1);
+      expect(res.body[0].feedback).toBeNull();
+      expect(res.body[1].version).toBe(2);
+      expect(res.body[1].feedback).toBe('make the moon bigger');
+    });
+  });
+
   describe('DELETE /api/books/:id', () => {
     it('deletes a book owned by the user', async () => {
       const token = await createUserAndGetToken(app);

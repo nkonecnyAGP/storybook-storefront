@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import BookDetail from '../BookDetail'
-import type { BookWithPages, BookVersion } from '../../types'
+import type { BookWithPages, BookVersion, IllustrationVersion } from '../../types'
 
 const mockUser = {
   id: 'user-1',
@@ -135,7 +135,7 @@ function setupFetchMock(opts: {
   book?: BookWithPages
   versions?: BookVersion[]
   restored?: BookWithPages
-  illustrationVersions?: string[]
+  illustrationVersions?: IllustrationVersion[]
 }) {
   const calls: FetchCall[] = []
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
@@ -320,7 +320,10 @@ describe('BookDetail — Illustration history active indicator', () => {
   it('marks the active thumbnail with a "Current" badge and renders non-active as revert buttons', async () => {
     setupFetchMock({
       book: illustratedBook,
-      illustrationVersions: [currentUrl, olderUrl],
+      illustrationVersions: [
+        { url: olderUrl, version: 1, created_at: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(), feedback: null },
+        { url: currentUrl, version: 2, created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(), feedback: null },
+      ],
     })
 
     renderBookDetail()
@@ -342,11 +345,51 @@ describe('BookDetail — Illustration history active indicator', () => {
       expect(screen.getByText('Current')).toBeInTheDocument()
     })
 
-    // Non-active should be a button labelled "Revert to version 2".
-    expect(screen.getByRole('button', { name: /revert to version 2/i })).toBeInTheDocument()
+    // Non-active (v1) should be a revert button. The active (v2) should not be.
+    expect(screen.getByRole('button', { name: /revert to version 1/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /revert to version 2/i })).not.toBeInTheDocument()
+  })
 
-    // The active version should NOT be a button (so clicking the already-
-    // active version is a no-op / not even rendered as one).
-    expect(screen.queryByRole('button', { name: /revert to version 1/i })).not.toBeInTheDocument()
+  it('renders timestamp and feedback metadata for each version in the carousel', async () => {
+    const olderCreated = new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString()
+    const currentCreated = new Date(Date.now() - 1000 * 60 * 30).toISOString()
+    const longFeedback = 'make the colors much warmer and add a bunch of extra twinkly stars in the background sky please'
+    setupFetchMock({
+      book: illustratedBook,
+      illustrationVersions: [
+        { url: olderUrl, version: 1, created_at: olderCreated, feedback: null },
+        { url: currentUrl, version: 2, created_at: currentCreated, feedback: longFeedback },
+      ],
+    })
+
+    renderBookDetail()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /reader view/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /reader view/i }))
+
+    const historyBtn = await screen.findByRole('button', { name: /^history$/i })
+    fireEvent.click(historyBtn)
+
+    // Version chips render for both items. Multiple "v1" / "v2" can appear in
+    // the page (story-version history list also uses v{N} chips); we only need
+    // to confirm the carousel chips exist.
+    await waitFor(() => {
+      expect(screen.getAllByText('v1').length).toBeGreaterThan(0)
+    })
+    expect(screen.getAllByText('v2').length).toBeGreaterThan(0)
+
+    // Relative timestamps appear (3h ago for older, 30m ago for current).
+    expect(screen.getByText('3h ago')).toBeInTheDocument()
+    expect(screen.getByText('30m ago')).toBeInTheDocument()
+
+    // The feedback is truncated to ~60 chars + ellipsis, with the full text in
+    // the title attribute. The null-feedback version renders nothing for that line.
+    const truncated = longFeedback.slice(0, 60).trimEnd()
+    const feedbackEl = screen.getByText(new RegExp(truncated.slice(0, 30)))
+    expect(feedbackEl).toBeInTheDocument()
+    expect(feedbackEl.getAttribute('title')).toBe(longFeedback)
+    expect(feedbackEl.textContent).toContain('…')
   })
 })

@@ -1,5 +1,6 @@
-import { writeFile, mkdir, readdir } from 'fs/promises';
+import { writeFile, mkdir, readdir, stat } from 'fs/promises';
 import { join } from 'path';
+import prisma from '../db/prisma';
 import type { Character } from '../types';
 
 const ILLUSTRATIONS_DIR = join(import.meta.dirname, '../../public/illustrations');
@@ -92,7 +93,19 @@ export async function generateIllustration(
     : `page-${pageNumber}-v${version}.png`;
   await writeFile(join(dir, filename), buffer);
 
-  return `/illustrations/${bookId}/${filename}`;
+  const url = `/illustrations/${bookId}/${filename}`;
+
+  await prisma.illustrationVersion.create({
+    data: {
+      book_id: bookId,
+      page_number: pageNumber,
+      version,
+      url,
+      feedback: feedback ?? null,
+    },
+  });
+
+  return url;
 }
 
 async function getNextVersion(dir: string, pageNumber: number): Promise<number> {
@@ -110,18 +123,61 @@ async function getNextVersion(dir: string, pageNumber: number): Promise<number> 
   }
 }
 
+export interface IllustrationVersionRecord {
+  url: string;
+  version: number;
+  created_at: string;
+  feedback: string | null;
+}
+
 export async function listIllustrationVersions(
   bookId: string,
   pageNumber: number,
-): Promise<string[]> {
+): Promise<IllustrationVersionRecord[]> {
+  const rows = await prisma.illustrationVersion.findMany({
+    where: { book_id: bookId, page_number: pageNumber },
+    orderBy: { version: 'asc' },
+  });
+
+  if (rows.length > 0) {
+    return rows.map(r => ({
+      url: r.url,
+      version: r.version,
+      created_at: r.created_at.toISOString(),
+      feedback: r.feedback,
+    }));
+  }
+
+  // Backwards-compatibility fallback: books generated before the
+  // IllustrationVersion table existed only have files on disk and no DB rows.
+  // We synthesize records from the filesystem so the history viewer still
+  // renders them. created_at uses the file mtime (best-effort) and feedback
+  // is null because we never stored it for legacy regens.
   const dir = join(ILLUSTRATIONS_DIR, bookId);
   try {
     const files = await readdir(dir);
-    const pattern = new RegExp(`^page-${pageNumber}(-v\\d+)?\\.png$`);
-    return files
-      .filter(f => pattern.test(f))
-      .sort()
-      .map(f => `/illustrations/${bookId}/${f}`);
+    const pattern = new RegExp(`^page-${pageNumber}(?:-v(\\d+))?\\.png$`);
+    const synthesized: IllustrationVersionRecord[] = [];
+    for (const f of files) {
+      const m = f.match(pattern);
+      if (!m) continue;
+      const version = m[1] ? parseInt(m[1], 10) : 1;
+      let created_at = new Date(0).toISOString();
+      try {
+        const s = await stat(join(dir, f));
+        created_at = s.mtime.toISOString();
+      } catch {
+        // mtime read failed — keep the epoch sentinel
+      }
+      synthesized.push({
+        url: `/illustrations/${bookId}/${f}`,
+        version,
+        created_at,
+        feedback: null,
+      });
+    }
+    synthesized.sort((a, b) => a.version - b.version);
+    return synthesized;
   } catch {
     return [];
   }
