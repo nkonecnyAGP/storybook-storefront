@@ -18,18 +18,31 @@
 
 Captured 2026-05-14 evening while using the app to prep demo books. Ranked roughly by user impact during the demo flow.
 
-1. **Edit illustration prompt before sending the image AI request.** Today when a user chose "No images" or "Cover only" mode and is later reviewing the suggested per-page illustration prompts, the only way to influence the prompt is to click *Generate illustration*, see what came back, then click *Regenerate* with feedback. That's two paid DALL-E calls when one well-edited prompt could have produced the right image first try. Need an inline editable textarea bound to `page.illustration_description` that saves back before the user clicks Generate. Server side: add a `PUT /api/books/:id/pages/:pageNumber` endpoint that only allows the draft owner to edit `illustration_description` (no schema change — column already exists).
+1. **Edit illustration prompt before sending the image AI request.** SHIPPED via [PR #11](https://github.com/nkonecnyAGP/storybook-storefront/pull/11) (Phase 0).
 
-2. **Expandable book-view layout (theater mode).** The book-spread view today renders inside the narrow main column. For reading and editing the expanded illustration descriptions, a fullscreen / wider mode would help — particularly with the suggestion-revise panel visible alongside. UX: a toggle button in the spread footer that expands the spread to ~90% viewport width and keeps the inline revise panel docked. No data changes.
+2. **Expandable book-view layout (theater mode).** The book-spread view today renders inside the narrow main column. For reading and editing the expanded illustration descriptions, a fullscreen / wider mode would help — particularly with the suggestion-revise panel visible alongside. UX: a toggle button in the spread footer that expands the spread to ~90% viewport width and keeps the inline revise panel docked. No data changes. **Still open.**
 
-3. **Visual consistency across pages for the same character.** Today each page is illustrated independently — the same character can look noticeably different page to page (different hair, different clothes, different proportions). This is a long-term blocker for the product feeling "real". Documented in ADR-002 already as a Phase 2 concern. Options to evaluate:
-   - Character-sheet pass: generate one canonical portrait per character at creation, distill its visual traits into a short text block, append to every page prompt.
-   - Switch to `gpt-image-1` (supports image inputs) so we can reference a canonical character image when generating each page.
-   - Seed deterministically when generating across pages of the same book.
+3. **Visual consistency across pages for the same character + provider migration.** Today each page is illustrated independently — the same character can look noticeably different page to page. Combined with the realization that real OpenAI spend is ~$0.20-$0.45 per image (10× our paper estimate, so a 15-page Full book is $3-$7), both problems are now planned together. See [illustration-providers-and-character-consistency.md](illustration-providers-and-character-consistency.md) for the full research — recommended path is **Fal.ai Flux Pro 1.1** as the new primary provider plus **character-sheet portraits passed via IP-Adapter** to every page generation. Estimated impact: ~5-8× cost reduction *and* solves the consistency gap. **Phase 0 SHIPPED in PR #11. Phase 1 (Fal migration) and Phase 2 (IP-Adapter character refs) still open.**
 
-   **Not blocking MVP**, but every additional page makes the inconsistency more visible. Schedule for the first post-demo iteration.
+4. **Bug: navigation chevrons in BookSpread overlay text on long pages.** SHIPPED via PR #11 alongside Phase 0.
 
-4. **Bug: navigation chevrons in BookSpread overlay text on long pages.** When a page has enough text to wrap deep, the right chevron (`aria-label="Next spread"`) renders on top of the last line. Same risk on the left chevron with overflowing illustrations. Fix: bump right padding (`pr-14 md:pr-16`) on the right `PageCanvas` and left padding on the left one, so text wraps before reaching the chevron. Small CSS change; reproduce by generating a page with 5+ sentences. Screenshot captured during demo prep.
+## Surfaced 2026-05-15 (post-Phase-0)
+
+Captured while wrapping up after the Phase 0 PR merged. Heavier than the demo-prep items — this is the next thematic area we need to address.
+
+5. **Auth durability + admin role + data persistence.** Multiple data-loss / can't-log-in events keep happening:
+   - The demo user account and all user-created books were wiped today (2026-05-15) somewhere between 11:20 (last confirmed snapshot) and ~17:30 (when the loss was noticed). We recovered from `.backups/dev-20260515-112056.db` but the root cause is still unknown — best guess is a `npm run db:reset` or `prisma migrate reset` running from a parallel CLI session or hook we haven't audited.
+   - As an unauthenticated viewer, *user-created published books* (the "community books" that demo users would publish) disappeared from the public catalog after the data wipe — they had been visible earlier.
+   - There's no admin role today. The owner-of-the-app can't see other users' accounts, recover orphaned books, or run integrity checks except by writing one-off Prisma scripts.
+
+   **What we need:**
+   - Investigate the root cause of the periodic data wipes. The dev.db snapshot script (added in PR #5) is buying us recovery time, but we haven't closed the door on the wipe itself. Audit scripts, hooks, parallel CLI sessions, anything that could invoke `prisma migrate reset` silently.
+   - Add an "admin" role on `User` (e.g., `User.role String @default("user")`). Boot the first registered user, or one explicitly marked, as admin.
+   - Admin-only endpoints: list users, list orphaned illustration directories, force-restore a snapshot, mark a book as featured, soft-delete vs. hard-delete.
+   - Consider soft-delete on User and Book (add `deleted_at DateTime?`) so accidental destructive operations are recoverable from within the app, not just from `.backups/`.
+   - For the "community published books not visible" symptom — confirm the `/api/books` (anonymous) query still returns user-created published books correctly after the data restore. If it does, the issue was just data, not a query bug. If it doesn't, it's a separate bug to chase.
+
+6. **Claude.md / agent setup audit.** User has homework for the next session: research Claude Code's `CLAUDE.md` options and integration, including the `.claude/agents/` subagent system (already in this repo at booksmith/qa/storefront), commands (`.claude/commands/`), and skills (`.claude/skills/`). See also [harness-backlog.md](harness-backlog.md) for the upstream Code Captain follow-ups we deferred. Should inform how we structure the next big chunk of work.
 
 The Phase 2 and Phase 3 sections further down in this file still apply.
 

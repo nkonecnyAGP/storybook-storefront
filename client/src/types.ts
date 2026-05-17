@@ -78,3 +78,25 @@ export interface OrderItem {
   quantity: number;
   price: number;
 }
+
+export interface IllustrationVersion {
+  url: string;
+  version: number;
+  created_at: string;
+  feedback: string | null;
+}
+
+export interface BookVersion {
+  id: number;
+  book_id: string;
+  version: number;
+  pages_json: string;
+  description: string | null;
+  characters_json: string | null;
+  created_at: string;
+  pages: Array<{
+    page_number: number;
+    text: string;
+    illustrationDescription: string;
+  }>;
+}

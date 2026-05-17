@@ -1,6 +1,21 @@
-import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw, Loader2, Paintbrush } from 'lucide-react'
-import type { BookWithPages, Page } from '../types'
+import { useEffect, useState } from 'react'
+import { ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw, Loader2, Paintbrush, Check, History } from 'lucide-react'
+import type { BookWithPages, IllustrationVersion, Page } from '../types'
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return iso
+  const diffMs = Date.now() - then
+  const sec = Math.round(diffMs / 1000)
+  if (sec < 60) return 'just now'
+  const min = Math.round(sec / 60)
+  if (min < 60) return `${min}m ago`
+  const hr = Math.round(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const day = Math.round(hr / 24)
+  if (day < 30) return `${day}d ago`
+  return new Date(iso).toLocaleDateString()
+}
 
 interface BookSpreadProps {
   book: BookWithPages;
@@ -9,8 +24,25 @@ interface BookSpreadProps {
   illustrating: boolean;
   onIllustratePage: (pageNumber: number, feedback?: string) => Promise<void>;
   onRevise: (feedback: string, newPageCount?: number) => Promise<void>;
+  onEditPrompt?: (pageNumber: number, description: string) => Promise<void>;
   revising: boolean;
   reviseError?: string;
+  onShowVersions?: (pageNumber: number) => Promise<void>;
+  illustrationVersions?: IllustrationVersion[];
+  showVersions?: boolean;
+  onRevertIllustration?: (pageNumber: number, url: string) => Promise<void>;
+}
+
+const DEFAULT_STYLE_DESCRIPTOR = 'Whimsical, colorful, warm, suitable for young children';
+
+/**
+ * Mirror of how the server assembles the image-AI prompt
+ * (server/src/services/illustrations.ts). If that changes, update this.
+ */
+function buildImagePromptPreview(description: string, styleDescriptor: string | null): string {
+  const style = (styleDescriptor || '').trim() || DEFAULT_STYLE_DESCRIPTOR;
+  const desc = description.trim() || '(no description set)';
+  return `Children's book illustration, ${desc}. ${style}. No text or words in the image.`;
 }
 
 type SpreadKind =
@@ -25,8 +57,13 @@ export default function BookSpread({
   illustrating,
   onIllustratePage,
   onRevise,
+  onEditPrompt,
   revising,
   reviseError,
+  onShowVersions,
+  illustrationVersions,
+  showVersions,
+  onRevertIllustration,
 }: BookSpreadProps) {
   const pages = book.pages || []
   const spreads: SpreadKind[] = [
@@ -127,6 +164,12 @@ export default function BookSpread({
                   feedback={illustrationFeedback}
                   onFeedbackChange={setIllustrationFeedback}
                   onRegenerate={() => void handleRegeneratePageIllustration(spread.page.page_number)}
+                  onEditPrompt={onEditPrompt}
+                  styleDescriptor={book.style_descriptor}
+                  onShowVersions={onShowVersions}
+                  illustrationVersions={illustrationVersions}
+                  showVersions={showVersions}
+                  onRevertIllustration={onRevertIllustration}
                 />
               </PageCanvas>
               <PageCanvas side="right">
@@ -264,8 +307,11 @@ function PageCanvas({ side, children }: { side: 'left' | 'right'; children: Reac
     side === 'left'
       ? 'shadow-[inset_-8px_0_12px_-12px_rgba(0,0,0,0.4)]'
       : 'shadow-[inset_8px_0_12px_-12px_rgba(0,0,0,0.4)]'
+  // Pad the outer edge by 3.5rem (pl-14 / pr-14) so the absolute-positioned
+  // chevron buttons don't overlap text or images that grow into them.
+  const outerPad = side === 'left' ? 'pl-14 pr-4 md:pl-16 md:pr-6' : 'pr-14 pl-4 md:pr-16 md:pl-6'
   return (
-    <div className={`bg-white dark:bg-gray-800 ${radius} ${innerShadow} p-4 md:p-6 flex flex-col`}>
+    <div className={`bg-white dark:bg-gray-800 ${radius} ${innerShadow} ${outerPad} py-4 md:py-6 flex flex-col`}>
       {children}
     </div>
   )
@@ -279,9 +325,57 @@ interface PageIllustrationProps {
   feedback: string;
   onFeedbackChange: (v: string) => void;
   onRegenerate: () => void;
+  onEditPrompt?: (pageNumber: number, description: string) => Promise<void>;
+  styleDescriptor?: string | null;
+  onShowVersions?: (pageNumber: number) => Promise<void>;
+  illustrationVersions?: IllustrationVersion[];
+  showVersions?: boolean;
+  onRevertIllustration?: (pageNumber: number, url: string) => Promise<void>;
 }
 
-function PageIllustration({ page, isOwner, isDraft, illustrating, feedback, onFeedbackChange, onRegenerate }: PageIllustrationProps) {
+function PageIllustration({
+  page,
+  isOwner,
+  isDraft,
+  illustrating,
+  feedback,
+  onFeedbackChange,
+  onRegenerate,
+  onEditPrompt,
+  styleDescriptor,
+  onShowVersions,
+  illustrationVersions,
+  showVersions,
+  onRevertIllustration,
+}: PageIllustrationProps) {
+  const [draftPrompt, setDraftPrompt] = useState(page.illustration_description);
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const [promptSavedAt, setPromptSavedAt] = useState<number | null>(null);
+  const [showPromptPreview, setShowPromptPreview] = useState(false);
+
+  useEffect(() => {
+    setDraftPrompt(page.illustration_description);
+  }, [page.illustration_description, page.id]);
+
+  const promptDirty = draftPrompt.trim() !== page.illustration_description.trim();
+
+  const savePromptIfChanged = async (): Promise<void> => {
+    if (!onEditPrompt) return;
+    const trimmed = draftPrompt.trim();
+    if (!trimmed || !promptDirty) return;
+    setSavingPrompt(true);
+    try {
+      await onEditPrompt(page.page_number, trimmed);
+      setPromptSavedAt(Date.now());
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
+
+  const handleRegenerateWithSavedPrompt = async (): Promise<void> => {
+    if (promptDirty) await savePromptIfChanged();
+    onRegenerate();
+  };
   if (page.illustration_url) {
     return (
       <div className="flex-1 flex flex-col">
@@ -293,40 +387,152 @@ function PageIllustration({ page, isOwner, isDraft, illustrating, feedback, onFe
           />
         </div>
         {isOwner && isDraft && (
-          <div className="mt-2 flex gap-2">
-            <input
-              type="text"
-              value={feedback}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onFeedbackChange(e.target.value)}
-              placeholder="warmer colors, more stars..."
-              disabled={illustrating}
-              className="flex-1 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-xs focus:border-purple-400 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50"
-            />
-            <button
-              onClick={onRegenerate}
-              disabled={illustrating}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 cursor-pointer border-none disabled:opacity-40 whitespace-nowrap"
+          <div className="mt-2">
+            <label
+              htmlFor={`redo-feedback-${page.page_number}`}
+              className="block text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1"
             >
-              {illustrating ? <Loader2 size={12} className="animate-spin" /> : <Paintbrush size={12} />}
-              Redo (~$0.04)
-            </button>
+              What to change on re-roll
+            </label>
+            <textarea
+              id={`redo-feedback-${page.page_number}`}
+              value={feedback}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onFeedbackChange(e.target.value)}
+              placeholder="e.g., warmer colors, add more stars, make the dragon smaller..."
+              disabled={illustrating}
+              rows={3}
+              className="w-full px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-xs focus:border-purple-400 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50 resize-none"
+            />
+            <div className="mt-1.5 flex justify-end gap-2">
+              {onShowVersions && (
+                <button
+                  onClick={() => void onShowVersions(page.page_number)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer border-none whitespace-nowrap"
+                >
+                  <History size={12} />
+                  History
+                </button>
+              )}
+              <button
+                onClick={onRegenerate}
+                disabled={illustrating}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 cursor-pointer border-none disabled:opacity-40 whitespace-nowrap"
+              >
+                {illustrating ? <Loader2 size={12} className="animate-spin" /> : <Paintbrush size={12} />}
+                Redo (~$0.04)
+              </button>
+            </div>
+            {showVersions && illustrationVersions && illustrationVersions.length > 1 && (
+              <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+                {illustrationVersions.map(v => {
+                  const isActive = v.url === page.illustration_url;
+                  const truncatedFeedback = v.feedback && v.feedback.length > 60
+                    ? `${v.feedback.slice(0, 60).trimEnd()}…`
+                    : v.feedback;
+                  const thumb = isActive ? (
+                    <div
+                      className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-purple-500 ring-2 ring-purple-400 dark:ring-purple-500"
+                      aria-label={`Version ${v.version} (current)`}
+                    >
+                      <img src={`http://localhost:3001${v.url}`} alt={`Version ${v.version}`} className="w-full h-full object-cover" />
+                      <span className="absolute bottom-0 left-0 right-0 bg-purple-500 text-white text-[10px] font-bold text-center py-0.5">
+                        Current
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => onRevertIllustration && void onRevertIllustration(page.page_number, v.url)}
+                      className="w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer border-gray-200 dark:border-gray-600 hover:border-purple-300 p-0"
+                      aria-label={`Revert to version ${v.version}`}
+                    >
+                      <img src={`http://localhost:3001${v.url}`} alt={`Version ${v.version}`} className="w-full h-full object-cover" />
+                    </button>
+                  );
+                  return (
+                    <div key={v.url} className="shrink-0 flex flex-col gap-1 w-32">
+                      {thumb}
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="inline-flex items-center justify-center px-1.5 rounded-full font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                          v{v.version}
+                        </span>
+                        <span className="text-gray-500 dark:text-gray-400">
+                          {formatRelativeTime(v.created_at)}
+                        </span>
+                      </div>
+                      {truncatedFeedback && (
+                        <span
+                          className="text-[10px] italic text-gray-500 dark:text-gray-400 truncate"
+                          title={v.feedback ?? undefined}
+                        >
+                          “{truncatedFeedback}”
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
     )
   }
 
+  const canEditPrompt = isOwner && isDraft && !!onEditPrompt;
+  const recentlySaved = promptSavedAt !== null && Date.now() - promptSavedAt < 3000;
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-amber-100/60 to-amber-200/40 dark:from-gray-700 dark:to-gray-700/60 rounded-xl p-4 border-2 border-dashed border-amber-300 dark:border-gray-600 text-center">
-      <ImageIcon size={32} className="text-amber-400 dark:text-amber-300/50 mb-2" />
-      <p className="text-xs text-amber-700 dark:text-amber-300/80 italic mb-3 leading-snug">
-        {page.illustration_description}
-      </p>
+    <div className="flex-1 flex flex-col bg-gradient-to-br from-amber-100/60 to-amber-200/40 dark:from-gray-700 dark:to-gray-700/60 rounded-xl p-4 border-2 border-dashed border-amber-300 dark:border-gray-600">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-300/70 text-xs font-semibold">
+          <ImageIcon size={14} />
+          {canEditPrompt ? 'Illustration prompt (editable)' : 'Illustration prompt'}
+        </div>
+        {canEditPrompt && (savingPrompt
+          ? <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Saving…</span>
+          : recentlySaved
+            ? <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1"><Check size={10} /> Saved</span>
+            : promptDirty
+              ? <span className="text-xs text-amber-600 dark:text-amber-400">unsaved</span>
+              : null
+        )}
+      </div>
+      {canEditPrompt ? (
+        <textarea
+          value={draftPrompt}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraftPrompt(e.target.value)}
+          onBlur={() => { void savePromptIfChanged() }}
+          disabled={illustrating || savingPrompt}
+          maxLength={2000}
+          rows={6}
+          placeholder="Describe what the illustration should show. Edit this before generating to save money on re-rolls."
+          className="w-full flex-1 min-h-[120px] px-3 py-2 mb-2 rounded-lg border border-amber-200 dark:border-gray-600 bg-white/80 dark:bg-gray-800/60 text-amber-900 dark:text-amber-100 text-xs leading-snug focus:border-amber-500 focus:outline-none placeholder-amber-400 dark:placeholder-amber-700 disabled:opacity-50 resize-none"
+        />
+      ) : (
+        <p className="text-xs text-amber-700 dark:text-amber-300/80 italic mb-3 leading-snug flex-1">
+          {page.illustration_description}
+        </p>
+      )}
+      {isOwner && isDraft && (
+        <div className="mb-3">
+          <button
+            onClick={() => setShowPromptPreview(s => !s)}
+            className="text-xs text-amber-700 dark:text-amber-300 hover:underline cursor-pointer bg-transparent border-none p-0"
+          >
+            {showPromptPreview ? 'Hide full prompt' : 'Preview full prompt (what gets sent to the image AI)'}
+          </button>
+          {showPromptPreview && (
+            <div className="mt-1.5 px-2 py-1.5 rounded border border-amber-200 dark:border-gray-600 bg-amber-50/60 dark:bg-gray-800/40 text-xs text-amber-900 dark:text-amber-200 font-mono leading-snug whitespace-pre-wrap break-words">
+              {buildImagePromptPreview(draftPrompt, styleDescriptor ?? null)}
+            </div>
+          )}
+        </div>
+      )}
       {isOwner && isDraft && (
         <button
-          onClick={onRegenerate}
-          disabled={illustrating}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-500 text-white hover:bg-purple-600 cursor-pointer border-none disabled:opacity-40"
+          onClick={() => void handleRegenerateWithSavedPrompt()}
+          disabled={illustrating || savingPrompt}
+          className="self-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-500 text-white hover:bg-purple-600 cursor-pointer border-none disabled:opacity-40"
         >
           {illustrating ? <Loader2 size={12} className="animate-spin" /> : <Paintbrush size={12} />}
           {illustrating ? 'Drawing...' : 'Generate illustration (~$0.04)'}
