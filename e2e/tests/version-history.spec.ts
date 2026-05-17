@@ -37,6 +37,10 @@ test.describe('Version history — restore prior version', () => {
   let versionsHits = 0;
   let restoreHits = 0;
   let user: RegisterResponse;
+  // Track every email we registered against the live server so afterAll can
+  // delete them. With playwright's reuseExistingServer in dev, otherwise these
+  // would accumulate in dev.db across runs.
+  const createdEmails: string[] = [];
 
   test.beforeEach(async ({ page, request }) => {
     versionsHits = 0;
@@ -50,6 +54,7 @@ test.describe('Version history — restore prior version', () => {
     });
     expect(res.ok()).toBeTruthy();
     user = (await res.json()) as RegisterResponse;
+    createdEmails.push(email);
 
     // Set up route mocks BEFORE navigating so the initial fetch hits them.
     await page.route(`**/api/books/${BOOK_ID}`, async route => {
@@ -158,6 +163,18 @@ test.describe('Version history — restore prior version', () => {
     await page.evaluate(({ id, email, name, token }) => {
       localStorage.setItem('storybook-auth', JSON.stringify({ id, email, name, token }));
     }, { id: user.id, email: user.email, name: user.name, token: user.token });
+  });
+
+  test.afterAll(async ({ request }) => {
+    // Clean up every user we registered against the live server so dev.db
+    // doesn't accumulate timestamped @example.com accounts across runs.
+    for (const email of createdEmails) {
+      await request.delete('http://localhost:3001/api/_test/user-by-email', {
+        data: { email },
+        headers: { 'x-test-secret': 'dev-test-secret' },
+      });
+    }
+    createdEmails.length = 0;
   });
 
   test('restore prior version updates the book and refreshes history', async ({ page }) => {
