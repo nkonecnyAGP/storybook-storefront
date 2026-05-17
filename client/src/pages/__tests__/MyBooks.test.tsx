@@ -11,6 +11,7 @@ const mockUser = {
   email: 'test@example.com',
   name: 'Test User',
   token: 'test-token',
+  role: 'user' as const,
 }
 
 const publishedBook: Book = {

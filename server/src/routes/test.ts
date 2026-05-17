@@ -22,6 +22,11 @@ function expectedSecret(): string {
   return process.env.TEST_SECRET ?? 'dev-test-secret';
 }
 
+// NOTE: This endpoint performs a HARD delete (prisma.user.delete + book
+// cleanup), NOT a soft delete. It's deliberate: this is test-only cleanup for
+// rows that Playwright specs leave behind in dev.db, not a user-facing
+// "delete my account" flow. Admin restore is irrelevant for these throwaway
+// rows, and we want the bytes gone so the next run starts clean.
 router.delete('/user-by-email', async (req: Request, res: Response) => {
   if (isProd()) {
     return res.status(404).json({ error: 'Not found' });

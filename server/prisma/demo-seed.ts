@@ -200,20 +200,19 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient();
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // Demo user — idempotent: skip if already exists by email.
-  let user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } });
-  if (user) {
-    console.log(`[seed] user ${DEMO_EMAIL} already exists, reusing.`);
-  } else {
-    user = await prisma.user.create({
-      data: {
-        email: DEMO_EMAIL,
-        name: DEMO_NAME,
-        password_hash: hashPassword(DEMO_PASSWORD),
-      },
-    });
-    console.log(`[seed] created user ${DEMO_EMAIL} (id ${user.id}). Password: ${DEMO_PASSWORD}`);
-  }
+  // Demo user — upsert so reruns also promote the row to admin if it predates
+  // OPS.2. The demo account is the canonical admin in this demo project.
+  const user = await prisma.user.upsert({
+    where: { email: DEMO_EMAIL },
+    update: { role: 'admin' },
+    create: {
+      email: DEMO_EMAIL,
+      name: DEMO_NAME,
+      password_hash: hashPassword(DEMO_PASSWORD),
+      role: 'admin',
+    },
+  });
+  console.log(`[seed] demo user ${DEMO_EMAIL} (id ${user.id}, role ${user.role}). Password: ${DEMO_PASSWORD}`);
 
   for (const stub of DEMO_BOOKS) {
     const existing = await prisma.book.findUnique({ where: { id: stub.id } });

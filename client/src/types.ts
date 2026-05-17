@@ -1,8 +1,20 @@
+export type UserRole = 'user' | 'admin';
+
 export interface User {
   id: string;
   email: string;
   name: string;
   token: string;
+  role: UserRole;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  deleted_at: string | null;
+  created_at: string;
 }
 
 export type CharacterRole = 'primary' | 'antagonist' | 'supporting';
@@ -34,10 +46,22 @@ export interface Book {
   style_reference_url: string | null;
   created_by: string | null;
   created_at?: string;
+  deleted_at?: string | null;
 }
 
 export interface BookWithPages extends Book {
   pages: Page[];
+}
+
+export interface AdminBook extends Book {
+  deleted_at: string | null;
+  creator: { email: string; name: string } | null;
+}
+
+export interface OrphanIllustration {
+  path: string;
+  book_exists: boolean;
+  soft_deleted: boolean;
 }
 
 export interface Page {
