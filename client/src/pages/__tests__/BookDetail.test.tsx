@@ -136,8 +136,11 @@ function setupFetchMock(opts: {
   versions?: BookVersion[]
   restored?: BookWithPages
   illustrationVersions?: IllustrationVersion[]
+  revised?: BookWithPages
+  versionsAfterRevise?: BookVersion[]
 }) {
   const calls: FetchCall[] = []
+  let getVersionsCount = 0
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
     calls.push({ url, init })
@@ -152,8 +155,21 @@ function setupFetchMock(opts: {
       )
     }
     if (url === '/api/books/book-1/versions' && method === 'GET') {
+      getVersionsCount++
+      const body =
+        opts.versionsAfterRevise && getVersionsCount > 1
+          ? opts.versionsAfterRevise
+          : (opts.versions ?? versionsResponse)
       return Promise.resolve(
-        new Response(JSON.stringify(opts.versions ?? versionsResponse), {
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    }
+    if (url === '/api/books/book-1/revise' && method === 'POST') {
+      return Promise.resolve(
+        new Response(JSON.stringify(opts.revised ?? baseBook), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
@@ -391,5 +407,120 @@ describe('BookDetail — Illustration history active indicator', () => {
     expect(feedbackEl).toBeInTheDocument()
     expect(feedbackEl.getAttribute('title')).toBe(longFeedback)
     expect(feedbackEl.textContent).toContain('…')
+  })
+})
+
+describe('BookDetail — Post-revise comparison modal', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const v1Book: BookWithPages = {
+    ...baseBook,
+    version: 1,
+    pages: [
+      { id: 1, book_id: 'book-1', page_number: 1, text: 'Original page 1 text', illustration_description: 'd1', illustration_url: null },
+      { id: 2, book_id: 'book-1', page_number: 2, text: 'Original page 2 text', illustration_description: 'd2', illustration_url: null },
+    ],
+  }
+
+  const v2Revised: BookWithPages = {
+    ...baseBook,
+    version: 2,
+    pages: [
+      { id: 1, book_id: 'book-1', page_number: 1, text: 'Revised page 1 text', illustration_description: 'd1', illustration_url: null },
+      { id: 2, book_id: 'book-1', page_number: 2, text: 'Revised page 2 text', illustration_description: 'd2', illustration_url: null },
+    ],
+  }
+
+  // Initial fetch: only v1 exists (no prior versions). After revise: a v1 row
+  // is the prior-version snapshot the modal compares against.
+  const versionsBeforeRevise: BookVersion[] = [
+    {
+      id: 1,
+      book_id: 'book-1',
+      version: 1,
+      pages_json: '[]',
+      description: null,
+      characters_json: null,
+      created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+      pages: [
+        { page_number: 1, text: 'Original page 1 text', illustrationDescription: 'd1' },
+        { page_number: 2, text: 'Original page 2 text', illustrationDescription: 'd2' },
+      ],
+    },
+  ]
+
+  const versionsAfterRevise: BookVersion[] = [
+    {
+      id: 1,
+      book_id: 'book-1',
+      version: 1,
+      pages_json: '[]',
+      description: null,
+      characters_json: null,
+      created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+      pages: [
+        { page_number: 1, text: 'Original page 1 text', illustrationDescription: 'd1' },
+        { page_number: 2, text: 'Original page 2 text', illustrationDescription: 'd2' },
+      ],
+    },
+  ]
+
+  it('shows a banner after revise and opens a side-by-side modal comparing v1 and v2 page text', async () => {
+    setupFetchMock({
+      book: v1Book,
+      versions: versionsBeforeRevise,
+      revised: v2Revised,
+      versionsAfterRevise,
+    })
+
+    renderBookDetail()
+
+    // Wait for the page to render with the revise form.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /revise story/i })).toBeInTheDocument()
+    })
+
+    // No banner shown initially — past-session revisions don't trigger it.
+    expect(screen.queryByText(/see what changed/i)).not.toBeInTheDocument()
+
+    // Type feedback and submit the revise call.
+    const textarea = screen.getByPlaceholderText(/Make the ending happier/i)
+    fireEvent.change(textarea, { target: { value: 'Make it funnier' } })
+    fireEvent.click(screen.getByRole('button', { name: /revise story/i }))
+
+    // Banner appears with the new version number.
+    await waitFor(() => {
+      expect(screen.getByText(/Story revised to v2 — see what changed/i)).toBeInTheDocument()
+    })
+
+    // Wait for the "Show changes" button to be ready (versions fetch resolved).
+    const showChanges = await screen.findByRole('button', { name: /show changes/i })
+    fireEvent.click(showChanges)
+
+    // Modal renders with the v1 → v2 title and both texts side-by-side.
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    expect(screen.getByText('v1 → v2')).toBeInTheDocument()
+    expect(screen.getByText('Original page 1 text')).toBeInTheDocument()
+    expect(screen.getByText('Original page 2 text')).toBeInTheDocument()
+    expect(screen.getByText('Revised page 1 text')).toBeInTheDocument()
+    expect(screen.getByText('Revised page 2 text')).toBeInTheDocument()
+
+    // Dismiss the modal via the Close button.
+    fireEvent.click(screen.getByRole('button', { name: /^close$/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    // Banner is also cleared after closing the modal.
+    expect(screen.queryByText(/see what changed/i)).not.toBeInTheDocument()
   })
 })
