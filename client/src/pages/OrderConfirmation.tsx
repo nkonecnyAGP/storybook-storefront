@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { CheckCircle, BookOpen } from 'lucide-react'
-import type { OrderSummary } from '../types'
+import type { Order } from '../types'
 
 export default function OrderConfirmation() {
   const { id } = useParams<{ id: string }>()
-  const [order, setOrder] = useState<OrderSummary | null>(null)
+  const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch(`/api/orders/${id}`)
       .then(r => r.json())
-      .then((data: OrderSummary) => { setOrder(data); setLoading(false) })
+      .then((data: Order) => { setOrder(data); setLoading(false) })
   }, [id])
 
   if (loading) return <div className="text-center py-20 text-gray-400 text-lg">Loading...</div>

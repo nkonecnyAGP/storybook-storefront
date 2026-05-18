@@ -84,24 +84,13 @@ export interface CartItem {
   author: string;
 }
 
-export interface OrderSummary {
-  id: string;
-  customer_name: string;
-  customer_email: string;
-  total: number;
-  status: string;
-  items: OrderItem[];
-  created_at?: string;
-}
-
-export interface OrderItem {
-  id?: number;
-  order_id?: string;
-  book_id: string;
-  title: string;
-  quantity: number;
-  price: number;
-}
+// Order and OrderItem are sourced from @storybook/shared (Zod schemas).
+// Do not redeclare them here — see shared/src/orders.ts.
+// Re-exported so existing in-client consumers can keep importing from '../types'.
+// `OrderSummary` was historically a near-duplicate of the wire `Order` shape; it
+// has been retired in favor of `Order` itself (single source of truth for the
+// wire shape). Consumers can ignore fields they don't render (e.g. session_id).
+export type { Order, OrderItem } from '@storybook/shared';
 
 export interface IllustrationVersion {
   url: string;

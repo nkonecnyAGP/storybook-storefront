@@ -2,14 +2,17 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import OrderConfirmation from '../OrderConfirmation'
-import type { OrderSummary } from '../../types'
+import type { Order } from '../../types'
 
-const sampleOrder: OrderSummary = {
+const sampleOrder: Order = {
   id: 'order-uuid-12345678',
+  session_id: 'session-uuid',
+  user_id: null,
   customer_name: 'Test User',
   customer_email: 'test@example.com',
   total: 19.98,
   status: 'pending',
+  created_at: '2026-05-18T00:00:00.000Z',
   items: [
     {
       id: 1,
@@ -22,7 +25,7 @@ const sampleOrder: OrderSummary = {
   ],
 }
 
-function setupFetchMock(order: OrderSummary = sampleOrder) {
+function setupFetchMock(order: Order = sampleOrder) {
   vi.stubGlobal(
     'fetch',
     vi.fn(() =>
