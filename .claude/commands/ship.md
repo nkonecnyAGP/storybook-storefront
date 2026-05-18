@@ -38,8 +38,29 @@ Get the current branch ready to ship. Follow the project's done criteria in `CLA
 
 6. **Draft PR** title and body:
    - Title: under 70 chars. If `$ARGUMENTS` was provided, use that.
-   - Body: Summary (1-3 bullets) + Test plan (checklist), per the standard PR template
-   - Show the draft and confirm
+   - Body uses this template:
+
+     ```markdown
+     ## Summary
+     <1-3 bullets focused on the WHY, not the what>
+
+     ## Delegations
+     <Which agent did which slice of zone work. Be honest — if main did
+     zone work inline rather than delegating, list that and flag for
+     review. Format:
+       - booksmith: <server work>
+       - storefront: <client work>
+       - qa: <test work>
+       - main: <orchestration, cross-zone glue, 1-line fixes>
+     If only main touched the branch (docs / tooling / pure orchestration),
+     write "main only — no zone code touched">
+
+     ## Test plan
+     <Bulleted markdown checklist of TODOs for reviewer to verify>
+     ```
+
+   - The Delegations section is REQUIRED per CLAUDE.md — it's the audit trail for zone-ownership compliance. Do not omit it.
+   - Show the draft and confirm before opening the PR
 
 7. **Confirm and execute** — only after the user explicitly approves:
    - Push the branch (`-u` if first push)
