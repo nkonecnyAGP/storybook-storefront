@@ -162,3 +162,83 @@ Only `client/src/types.ts:76-85` needs to change — delete the local `CartItem`
 
 **Folded into this branch (separate scope, will be in the same squash-merged PR):**
 - `.claude/commands/start-task.md` — added step 5 "Hydrate the worktree" baking in `npm install && npm run setup:worktree` and a Prisma-client copy workaround for corporate-cert environments. Reason: worktree setup is required for every agent-driven task in this repo; making it implicit in `/start-task` removes the "agent dispatched to broken worktree" failure mode.
+
+### agent/refactor/ops3-zod-remaining-routes — 2026-05-18
+
+**Backlog:** OPS.3 — Zod migration for the remaining server routes: `books.ts`, `admin.ts`, `test.ts`. Bundled as one PR (matches the cart follow-up precedent).
+**Owner agent:** booksmith primary; storefront follows for any client-side type swaps once the shared schemas land. Same serial pattern as the foundation and cart PRs.
+
+**Carry-over conventions from prior OPS.3 PRs:**
+- Shared schemas live in `shared/src/<route>.ts`, re-exported from `shared/src/index.ts`
+- Use `z.string()` for date fields (Prisma serializes to ISO over the wire; response middleware validates post-`JSON.stringify`)
+- Re-export from `server/src/types.ts` and `client/src/types.ts` rather than deleting duplicate definitions outright — keeps legacy `Store` interface and 21+ client import sites stable
+- Middleware error format: `Invalid request body: <field>: <zod-message>` — preserve any test assertions that pin error strings, update if the prefix shape is what changed
+
+**Plan**
+- [x] @booksmith: audit each route's request/response shape, add `shared/src/{books,admin,test}.ts` Zod schemas, re-export from `shared/src/index.ts`
+- [x] @booksmith: migrate `server/src/routes/books.ts` (14 endpoints) — `requireAuth` extracted to a middleware so auth runs before `validate()`
+- [x] @booksmith: migrate `server/src/routes/admin.ts` (6 endpoints) — `gateAdmin` helper promoted to `adminGate` Express middleware for same auth-before-validate ordering
+- [x] @booksmith: migrate `server/src/routes/test.ts` (1 endpoint) — kept the existing prod/secret short-circuit as a pre-`validate` inline middleware so env/auth checks remain body-shape-agnostic
+- [x] @booksmith: server tests still pass — 85/85
+- [x] @booksmith: TypeScript clean — `npx tsc --noEmit` passes in `server/` and `shared/` with zero new errors (client errors all pre-existing and unrelated)
+- [x] @storefront: client-side type swap (see handoff list below)
+- [x] @storefront: client tests still pass — 36/36 across 8 files
+- [ ] e2e tests pass
+
+**Plan deviations during execution:**
+- **Auth middleware extraction.** `books.ts` and `admin.ts` previously called `getAuthUser`/`requireAdmin` inside each handler. To keep `validate({ request })` from rejecting unauthenticated callers with 400 (revealing schema info), the auth check moved to a proper Express middleware (`requireAuth` in `books.ts`, `adminGate` in `admin.ts`) that runs BEFORE `validate(...)`. Auth'd user threads through `res.locals.user`. No behavior change visible to existing tests, but the layering is now correct: 401/403 always wins over 400.
+- **`is_featured` / `is_user_created` type widening.** The legacy server `Book` interface had these as `number` (0/1). Prisma's schema defines them as `Boolean`, so the wire shape is actually `boolean`. The shared `BookSchema` uses `z.boolean()`, which is what `.toMatchObject` / runtime behavior already assumed. Tests already pass `is_featured: true/false` (see `admin.test.ts:177,184,191`). No test churn needed.
+- **`init.ts` legacy types.** `server/src/db/init.ts` is the long-dormant JSON file store from before the Prisma migration — never called at runtime (`initDb()` has no callers in `server/src/index.ts`). Its seed shape doesn't match the modern wire `Book` (no `status`, `version`, `characters`, `cover_url`, etc.; `is_featured` is 0/1). Rather than retrofitting it, introduced `LegacyBook` and `LegacyPage` interfaces in `server/src/types.ts` and pointed `Store.books`/`Store.pages` at them. Contains the legacy shapes in the server zone — they never reach `@storybook/shared`.
+- **No error-message tests required updating.** None of the books/admin/test test cases pin a specific error string under the new `validate()` prefix format. `books.test.ts` only checks `res.status` for the 400 paths.
+
+**Schemas added:**
+- `shared/src/books.ts` — `Character`, `CharacterRole`, `Page`, `Book`, `BookWithPages` plus per-endpoint request/response schemas (catalog list, mine, themes, age-ranges, detail, publish/unpublish, delete, update-page, revise, restore-version, version-list, illustrate, illustration-list, illustration-revert)
+- `shared/src/admin.ts` — `AdminUser`, `AdminBookListItem` (book + creator join), `AdminBookFeaturedRequest`, `OrphanIllustration`, list/restore/mutation response schemas
+- `shared/src/test.ts` — `TestUserDeleteRequest`, `TestUserDeleteResponse`
+
+**Server types.ts:**
+- Now re-exports `Book`, `BookWithPages`, `BookVersion`, `Character`, `CharacterRole`, `IllustrationVersion`, `Page` from `@storybook/shared` (in addition to existing `CartItem`, `Order`, `OrderItem`)
+- Introduces `LegacyBook` and `LegacyPage` for the dormant JSON-store seed (see plan deviation above)
+
+**Handoff to @storefront — `client/src/types.ts` lines to swap to re-exports:**
+
+Delete these local declarations and replace with `export type` re-exports from `@storybook/shared`:
+- Lines 20–27 (`CharacterRole`, `Character`) → `export type { Character, CharacterRole } from '@storybook/shared'`
+- Lines 29–50 (`Book`) → `export type { Book } from '@storybook/shared'`
+  - **Heads-up:** shared `Book.is_featured` and `is_user_created` are `boolean`, not `number`. Two client test files (`components/__tests__/BookCard.test.tsx:23`, `pages/__tests__/Home.test.tsx:8,21`) currently use mock `Book` literals with `is_featured: 0/1` AND omit several required fields (`cover_url`, `status`, `version`, `characters`, `style_descriptor`, `style_reference_url`, `created_by`). These TS errors already exist in `master` so they're not regressions, but the storefront agent may want to bring those mocks up to spec at the same time.
+- Lines 52–54 (`BookWithPages`) → `export type { BookWithPages } from '@storybook/shared'`
+- Lines 56–59 (`AdminBook`) — **partial swap.** The client `AdminBook extends Book` and adds `creator: { email, name } | null`. Shared exports `AdminBookListItem` which has exactly that shape but as `BookSchema.extend(...)`. Option A: replace with `export type { AdminBookListItem as AdminBook } from '@storybook/shared'`. Option B: keep the local `AdminBook extends Book` (the imported `Book` is now the shared one). Either is fine; option B preserves the `AdminBook` name without an alias.
+- Lines 61–65 (`OrphanIllustration`) → `export type { OrphanIllustration } from '@storybook/shared'`
+- Lines 67–74 (`Page`) → `export type { Page } from '@storybook/shared'`
+- Lines 85–90 (`IllustrationVersion`) → `export type { IllustrationVersion } from '@storybook/shared'`
+- Lines 92–105 (`BookVersion`) → `export type { BookVersion } from '@storybook/shared'`
+  - **Heads-up:** shared `BookVersion.pages` items use `BookVersionPageSchema` (`{ page_number, text, illustrationDescription }`) which matches the client's inline anonymous type — no consumer changes needed.
+
+Lines 1–9 (`UserRole`, `User`) and 11–18 (`AdminUser`) are client-only auth concerns; the server's `AdminUser` from `@storybook/shared` is a near-superset (no `UserRole` enum on the wire — the DB column is freeform string). Recommend KEEPING the client's local `AdminUser` and `UserRole` types unchanged — narrowing on the client side is fine and doesn't drift the wire shape.
+
+**Surprises to flag for the merge session:**
+- The `validate()` middleware throws in dev when a response fails the schema. All 85 server tests pass on first run, which means none of the handlers ship anything outside the schemas I wrote. That's the load-bearing claim of this PR — verify by intentionally drift-testing one handler before merge if you want extra assurance.
+- `BookSchema` includes `characters_json: z.string().nullable()` **and** `characters: z.array(CharacterSchema)`. Both ship over the wire today because `hydrateBook` does `{ ...book, characters }` (it doesn't strip `characters_json`). Clients ignore the raw JSON. We could strip it server-side later, but it's not breaking anything and would mean a coordinated client+server change.
+- `BookSchema.is_featured` is `boolean` (matches Prisma). The legacy server `types.ts` had it as `number` — a pre-existing bug, not a wire-shape change. Same for `is_user_created`.
+
+**@storefront follow-up — client type swap landed:**
+- All 8 swaps applied in `client/src/types.ts`:
+  - `Character`, `CharacterRole`, `Book`, `BookWithPages`, `OrphanIllustration`, `Page`, `IllustrationVersion`, `BookVersion` now re-exported from `@storybook/shared`
+- **Took option B for `AdminBook`:** kept `interface AdminBook extends Book` (the imported `Book` is now the shared one). Added an inline `import type { Book } from '@storybook/shared'` so the `extends Book` reference resolves to the shared type. Preserves the local symbol name and leaves room for client-only admin fields if they ever land.
+- **Test mock fixes** — 5 files needed `is_featured`/`is_user_created` flipped from `0/1` to `true/false` and missing required fields added (`cover_url`, `status`, `version`, `characters`, `characters_json`, `style_descriptor`, `style_reference_url`, `created_by`, `created_at`, `deleted_at`):
+  - `client/src/components/__tests__/BookCard.test.tsx` — `mockBook` literal
+  - `client/src/pages/__tests__/Home.test.tsx` — both entries in `mockBooks`
+  - `client/src/pages/__tests__/Admin.test.tsx` — both entries in `sampleBooks` + `featuredBook` mock return shape (line 172: `is_featured: body.is_featured ? 1 : 0` → `is_featured: body.is_featured`)
+  - `client/src/pages/__tests__/BookDetail.test.tsx` — `baseBook` (all derived books spread from it)
+  - `client/src/pages/__tests__/MyBooks.test.tsx` — `publishedBook` (and `unpublishedBook` derives from it)
+- Booksmith's handoff flagged only BookCard/Home; Admin/BookDetail/MyBooks newly broke because they previously had complete required-field coverage but pinned `is_featured`/`is_user_created` as numbers. Same root cause; fixed in this slice (small, contained).
+- All client component code paths that read these fields use them in boolean contexts (`!!b.is_featured`, `b.is_user_created ? ... : null`, etc.), so flipping the mock literal type is semantically a no-op for runtime behavior.
+
+**Verification:**
+- `cd client && npx tsc --noEmit` — pre-existing errors only:
+  - `client/src/components/BookSpread.tsx` (16 errors — `SpreadKind` discriminated-union narrowing issues, unrelated to OPS.3)
+  - `client/src/pages/__tests__/Home.test.tsx` (1 error — `HTMLElement | undefined` on `screen.getAllByRole(...)[0]`, unrelated to OPS.3)
+  - These errors exist on `master` (verified by stashing the worktree and re-running tsc on master's `types.ts`).
+- `cd client && npm test` — 36/36 passing across 8 files.
+
+**Status: ready to ship pending e2e verification by the main session.**
