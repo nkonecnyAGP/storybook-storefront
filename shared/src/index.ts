@@ -4,3 +4,4 @@
 // Add new domains by creating `src/<domain>.ts` and re-exporting here.
 
 export * from './orders';
+export * from './cart';

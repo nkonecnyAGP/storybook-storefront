@@ -1,4 +1,4 @@
-import type { Order, OrderItem } from '@storybook/shared';
+import type { CartItem, Order, OrderItem } from '@storybook/shared';
 
 export interface User {
   id: string;
@@ -49,23 +49,25 @@ export interface Page {
   illustration_url: string | null;
 }
 
-export interface CartItem {
+// CartItemRow is the DB row shape used internally in the legacy Store interface.
+// The wire-shape CartItem (what clients receive) is sourced from @storybook/shared.
+export interface CartItemRow {
   id: number;
   session_id: string;
   book_id: string;
   quantity: number;
 }
 
-// Order and OrderItem are sourced from @storybook/shared (Zod schemas).
-// Do not redeclare them here — see shared/src/orders.ts.
+// Order, OrderItem, and CartItem are sourced from @storybook/shared (Zod schemas).
+// Do not redeclare them here — see shared/src/orders.ts and shared/src/cart.ts.
 // Re-exported so existing in-server consumers can keep importing from '../types'.
-export type { Order, OrderItem } from '@storybook/shared';
+export type { CartItem, Order, OrderItem } from '@storybook/shared';
 
 export interface Store {
   users: User[];
   books: Book[];
   pages: Page[];
-  cartItems: CartItem[];
+  cartItems: CartItemRow[];
   orders: Order[];
   orderItems: OrderItem[];
 }
