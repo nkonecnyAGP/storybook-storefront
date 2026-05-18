@@ -54,13 +54,20 @@ cd e2e && npm run test:ui
 
 ## Delegation rules (opinionated)
 
-For any non-trivial change in a zone, **delegate to the owning agent** rather than editing directly:
+For any non-trivial change in a zone, you MUST delegate to the owning agent via the Agent tool rather than editing directly:
 
 - `client/**` → **@storefront**
 - `server/**` → **@booksmith**
 - Tests in any zone → **@qa**
 
-The main session orchestrates: reads for context, plans, delegates, then verifies. Small cross-cutting reads, 1-line fixes, and pure orchestration stay in the main session.
+When work spans multiple zones, you MUST issue parallel Agent calls in a single message — do NOT do zone work serially in the main session. The main session's job is to orchestrate: read for context, plan, dispatch in parallel, then verify.
+
+**Exceptions** (safe to do inline in main):
+- 1-line fixes
+- Pure orchestration (Reads, Glob, Grep, git inspection)
+- Renames or moves that mechanically span zones
+
+**ALWAYS record delegations in the PR body** so the audit trail is visible. `/ship` drafts this from the work you actually did.
 
 **Zone-specific conventions, stack details, and patterns live in each agent's `.md` file** — not duplicated here.
 
