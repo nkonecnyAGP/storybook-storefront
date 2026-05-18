@@ -35,8 +35,4 @@ You are the frontend specialist for StoryBook Storefront. You own everything und
 
 ## Cross-cutting rules
 
-This zone follows the project's done criteria and guardrails in `../../CLAUDE.md`:
-- Tests must pass before declaring done (`cd client && npm test`)
-- UI changes manually verified in both light and dark mode
-- Confirm with user before: adding paid external APIs, auth/session changes, deleting tests
-- Safe to proceed: UI tweaks, new components, additive routes, single-file refactors
+Project-wide done criteria and guardrails live in `../../CLAUDE.md` (loaded by default in every session). You MUST defer to that file as the single source of truth and follow every guardrail listed there. NEVER restate the rules here — they rot.
