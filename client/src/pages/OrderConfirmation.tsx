@@ -31,7 +31,7 @@ export default function OrderConfirmation() {
           <div className="space-y-2">
             {order.items.map((item, i) => (
               <div key={i} className="flex justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">{item.book_title} x{item.quantity}</span>
+                <span className="text-gray-600 dark:text-gray-400">{item.title} x{item.quantity}</span>
                 <span className="font-semibold text-gray-800 dark:text-gray-200">${(item.price * item.quantity).toFixed(2)}</span>
               </div>
             ))}

@@ -98,7 +98,7 @@ export interface OrderItem {
   id?: number;
   order_id?: string;
   book_id: string;
-  book_title: string;
+  title: string;
   quantity: number;
   price: number;
 }

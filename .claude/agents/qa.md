@@ -30,6 +30,19 @@ You are the test and quality specialist for StoryBook Storefront. You own test i
 - Import `app` from index.ts, wrap with `supertest(app)`
 - Test happy paths and error cases (404s, 400s)
 
+#### Wire-shape assertions (MUST)
+Server route tests MUST pin the exact field names the client depends on for every response body shape — never settle for status code + general structure. Field renames must fail at unit-test time, not at e2e or in production. NEVER assert only that a list is non-empty or that a property "exists" without naming it. Canonical example lives in `server/src/routes/__tests__/orders.test.ts`.
+
+```ts
+// Wire-shape assertion: pins the actual field names the client depends on.
+expect(response.body.items[0]).toMatchObject({
+  book_id: expect.any(String),
+  title: expect.any(String),
+  quantity: expect.any(Number),
+  price: expect.any(Number),
+});
+```
+
 ### Client tests
 - jsdom environment via vitest.config.ts
 - `@testing-library/jest-dom` matchers in setup.ts
