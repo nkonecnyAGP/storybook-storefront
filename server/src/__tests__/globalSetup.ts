@@ -11,10 +11,19 @@ export async function setup() {
   if (existsSync(TEST_DB_PATH)) unlinkSync(TEST_DB_PATH);
 
   // Apply migrations to test.db so its schema matches dev.db.
-  execSync('node ./node_modules/prisma/build/index.js migrate deploy', {
+  // Use `npx prisma` so this works whether prisma is hoisted by npm workspaces
+  // or installed locally to server/node_modules.
+  // NODE_TLS_REJECT_UNAUTHORIZED=0 mirrors what server/src/index.ts does — Prisma
+  // downloads its query engine binary over HTTPS and the corporate proxy uses a
+  // self-signed cert.
+  execSync('npx prisma migrate deploy', {
     cwd: serverDir,
     stdio: 'pipe',
-    env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
+    env: {
+      ...process.env,
+      DATABASE_URL: TEST_DATABASE_URL,
+      NODE_TLS_REJECT_UNAUTHORIZED: '0',
+    },
   });
 }
 

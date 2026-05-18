@@ -1,3 +1,5 @@
+import type { Order, OrderItem } from '@storybook/shared';
+
 export interface User {
   id: string;
   email: string;
@@ -54,24 +56,10 @@ export interface CartItem {
   quantity: number;
 }
 
-export interface Order {
-  id: string;
-  session_id: string;
-  customer_name: string;
-  customer_email: string;
-  total: number;
-  status: string;
-  created_at: string;
-}
-
-export interface OrderItem {
-  id: number;
-  order_id: string;
-  book_id: string;
-  title: string;
-  quantity: number;
-  price: number;
-}
+// Order and OrderItem are sourced from @storybook/shared (Zod schemas).
+// Do not redeclare them here — see shared/src/orders.ts.
+// Re-exported so existing in-server consumers can keep importing from '../types'.
+export type { Order, OrderItem } from '@storybook/shared';
 
 export interface Store {
   users: User[];

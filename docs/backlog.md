@@ -49,6 +49,56 @@ Sequential dependency chain — each item unblocks the next.
 
   **Substantial refactor — recommend a fresh session.** Migration touches every API surface; suggest going route-by-route rather than big-bang.
 
+## Future directions
+
+Aspirational, not committed. Captured so structural decisions today stay forward-compatible.
+
+- **Mobile / non-TS clients.** If the storefront proves out as a real product, a native mobile companion (RN, Swift, or Kotlin) is an avenue worth exploring. This is part of why OPS.3 chose Zod-as-source-of-truth with a Zod → OpenAPI upgrade path: when a non-TS client lands, we generate the OpenAPI spec from existing Zod schemas via `@asteasolutions/zod-to-openapi` rather than rewriting the contract layer. No work today, just preserving the optionality.
+
 ## Working notes
 
 Update this section as work proceeds. Subagents read from here.
+
+### agent/refactor/ops3-zod-foundation — 2026-05-18
+
+**Backlog:** OPS.3 — Zod-based client/server type sharing, first PR of a multi-PR migration
+**Owner agent:** multi-zone (booksmith + storefront, orchestrated from main session)
+
+**Scope of this PR (foundation only):**
+- New top-level `shared/` workspace package — Zod schemas live here, exports `z.infer` types
+- Server-side Zod request/response validation middleware
+- Migrate `orders.ts` end-to-end as the reference pattern (fresh in context from the OrderConfirmation drift bug)
+- Client + server delete their local copies of the order-related types and import from `shared/`
+
+**Out of scope (follow-up PRs):**
+- `books.ts`, `cart.ts`, `admin.ts`, `test.ts` route migrations
+- OpenAPI generation (deferred per backlog decision)
+
+**Locked decisions (2026-05-18):**
+- **Shared package:** `@storybook/shared` workspace package, **source-only** (consumers import `.ts` directly via Vite + tsx — no build step). Promote to a built package only if `shared/` grows runtime code beyond Zod schemas.
+- **Middleware:** per-route inline `validate(Schema)` — standard Express pattern, no schema registry.
+- **Response validation:** throw in dev/test, warn in prod. Drift is the bug class this exists to prevent — catch loudly in tests, don't 500 every customer on a bad deploy.
+- **Delegation:** serial. @booksmith lands server + shared package + schemas; @storefront follows to swap client types. No artificial parallelism.
+
+**Plan**
+- [x] @booksmith: create `shared/` workspace package (source-only `.ts`, no build), add to root workspaces
+- [x] @booksmith: author Zod schemas for `orders.ts` request/response shapes in `shared/`
+- [x] @booksmith: `validate(Schema)` Express middleware (request body + response shape, throw dev/warn prod)
+- [x] @booksmith: migrate `orders.ts` to shared schemas, remove duplicated server types
+- [x] @booksmith: server tests still pass (Vitest+Supertest) — 85 tests pass (77 pre-existing + 8 new middleware tests)
+- [x] @storefront: swap client order types to `shared/` imports, remove duplicates from `client/src/types.ts`
+- [x] @storefront: client tests still pass (Vitest+RTL)
+- [x] e2e tests pass (order flow is user-facing) — 27/27 Playwright tests pass
+- [x] Manual smoke test in browser, light + dark mode — order confirmation renders book title correctly in both modes (original drift bug stays fixed)
+
+**Worktree setup gaps found during verification — fixed in this PR:**
+- Added `scripts/worktree-setup.mjs` — copies `server/.env` and `server/prisma/dev.db` from the main checkout into a freshly-created worktree (idempotent, skips files that already exist). Wired as `npm run setup:worktree`. After `git worktree add ...` (or the EnterWorktree tool), running `npm install && npm run setup:worktree` makes the worktree fully runnable.
+- Added `e2e` to the root `workspaces` array so `cd e2e && npm test` works without a separate `npm install` step. Verified Playwright resolution still works post-hoist: 27/27 e2e tests pass.
+- Re-verified server (85/85) and client (36/36) tests after the workspace shuffle.
+
+**@booksmith handoff notes (2026-05-18):**
+- Workspaces in root `package.json` now include `shared`, `server`, and `client` (all three — bringing server/client into the workspace was needed so npm symlinks `@storybook/shared` into a hoisted `node_modules` where both tsx and Vite can resolve it).
+- After pulling this branch and running `npm install` at the repo root, Prisma will need a `npx prisma generate` from `server/` (workspace hoisting moved Prisma's binary location). The existing `db:*` scripts in `server/package.json` continue to work.
+- Test globalSetup was updated to use `npx prisma migrate deploy` instead of a hardcoded `node ./node_modules/prisma/build/index.js` path (npm workspaces hoist `prisma` to root `node_modules`).
+- Response middleware validates the post-`JSON.stringify` wire shape (not the raw JS object). This is deliberate — Prisma hands back `Date` instances, but clients see ISO strings. Use `z.string()` (not `z.date()`) for date fields in the schemas.
+- `server/src/types.ts` now re-exports `Order` and `OrderItem` from `@storybook/shared` so the legacy `Store` interface still type-checks; storefront agent should do the same on the client side rather than deleting `client/src/types.ts` entirely.
