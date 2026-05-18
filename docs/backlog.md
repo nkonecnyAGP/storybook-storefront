@@ -24,15 +24,30 @@ Sequential dependency chain — each item unblocks the next.
 
 - [ ] **OPS.1** — Replace demo-seed examples. `server/prisma/demo-seed.ts` currently creates the demo user only; `DEMO_BOOKS` was emptied because the image-derived vision rewrites were low quality. Replace with 3-5 books actually generated via the in-app story generator (story + illustrations + character consistency). Capture their UUIDs in `DEMO_BOOKS` so seed reruns can recreate them deterministically.
 - [ ] **OPS.2** — Admin role on User (referenced in commit f71d253). Add `role: 'user' | 'admin'`, soft-delete on User and Book, and an admin-only API surface to inspect/clean orphaned state.
-- [ ] **OPS.3** — Decide and implement client/server type-sharing strategy. Today `client/src/types.ts` and `server/src/types.ts` are hand-maintained duplicates with no compile-time guarantee they stay in sync. Drift surfaced as a real production bug in OrderConfirmation (`book_title` vs `title` — order summary rendered empty book titles to every customer). Now partially guarded by a wire-shape assertion convention documented in `.claude/agents/qa.md` plus an e2e check on the checkout flow, but drift can still happen anywhere else.
+- [ ] **OPS.3** — Implement client/server type-sharing via Zod, with OpenAPI as a forward-compatible upgrade path.
 
-  **Options:**
-  - **(a)** Status quo + extend the wire-shape assertion convention to every route. Cheapest, doesn't prevent drift — only catches it earlier.
-  - **(b)** Zod schemas declared in server routes, derive types via `z.infer`, share with client via a `shared/` package. Server becomes the source of truth. **Recommended for this codebase.**
-  - **(c)** OpenAPI spec generated from server, generate client types from spec. Heaviest, best long-term for multi-client / public API.
-  - **(d)** Co-located response types — server route exports the response type, client imports via relative path. Cheap, but creates an unusual cross-zone TS dependency.
+  **Context.** `client/src/types.ts` and `server/src/types.ts` are hand-maintained duplicates with no compile-time link. Drift surfaced as a real production bug in OrderConfirmation (`book_title` vs `title` — order summary rendered empty book titles to every customer). Wire-shape assertions in `.claude/agents/qa.md` are an interim catch-net; this item is the structural fix.
 
-  **Substantial refactor — recommend a fresh session.** Other routes with under-asserted response shapes (audit found during the OrderConfirmation fix): `cart.ts` GET, `books.ts` GET/PUT/POST endpoints, `admin.ts`, `test.ts`. Apply the convention there too as part of (a), or supersede with (b)/(c).
+  **Decision (2026-05-18):** **Zod schemas as the source of truth.** When OpenAPI's specific benefits become valuable (third-party API consumers, non-TS clients, vendor-facing docs), generate the OpenAPI spec FROM the existing Zod schemas via `@asteasolutions/zod-to-openapi` or `zod-openapi`. This is NOT "Zod now, OpenAPI rewrite later" — the Zod schemas remain the source of truth in every future state.
+
+  **Why this over OpenAPI-first:** OpenAPI's killer features (multi-language SDK generation, Swagger UI docs, mock servers) only pay off when you have non-TS clients or external API consumers. None are on the storefront's near-term roadmap. Adopting OpenAPI now means paying the toolchain tax (codegen pipelines, less ergonomic generated TS types, separate runtime-validation layer) for capabilities that aren't yet useful. Zod gives runtime validation, end-to-end TS inference, IDE-refactor-safety, and a low-friction migration path to OpenAPI when needed.
+
+  **Implementation plan:**
+  1. Add Zod schemas (`z.object({...})`) for each route's request body and response shape, colocated with the route or in a shared `shared/` package
+  2. Mount Zod validation middleware on the server (validates request payloads, types response shapes)
+  3. Export `type Foo = z.infer<typeof FooSchema>` and import from both client and server
+  4. Delete duplicated definitions from `client/src/types.ts` and `server/src/types.ts`
+  5. Apply the wire-shape assertion convention to remaining under-asserted routes during migration: `cart.ts` GET, `books.ts` GET/PUT/POST endpoints, `admin.ts`, `test.ts`. Start with `orders.ts` since the drift bug is fresh in context.
+
+  **Deferred:** OpenAPI generation. Add `zod-to-openapi` only when there's a concrete need — third-party API consumers, non-TS clients (mobile app, partner SDKs), or vendor-facing API documentation. Zod schemas from step 1 are forward-compatible — no rework cost when this trigger fires.
+
+  **Rejected alternatives:**
+  - **OpenAPI-first** — enterprise tax for capabilities not yet needed. Generated TS types are less ergonomic than Zod inference. Runtime validation requires a separate layer. Reconsider if/when a non-TS client or external API consumer lands on the roadmap.
+  - **tRPC** — best DX for monorepo-only TS, but harder to expose the API to non-TS clients later. Doesn't fit the "potential to grow into mobile/partners" framing.
+  - **Co-located response types** (server route exports the type, client imports via relative path) — cheap, but creates an unusual cross-zone TS dependency that conflicts with the zone-ownership model in CLAUDE.md.
+  - **Status quo + assertions everywhere** (the original option (a)) — catches drift earlier but doesn't prevent it. Useful as an interim only.
+
+  **Substantial refactor — recommend a fresh session.** Migration touches every API surface; suggest going route-by-route rather than big-bang.
 
 ## Working notes
 
