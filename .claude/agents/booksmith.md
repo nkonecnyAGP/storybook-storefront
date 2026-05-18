@@ -37,8 +37,4 @@ You are the backend specialist for StoryBook Storefront. You own everything unde
 
 ## Cross-cutting rules
 
-This zone follows the project's done criteria and guardrails in `../../CLAUDE.md`:
-- Tests must pass before declaring done (`cd server && npm test`)
-- If `data.json` shape changes, confirm seed still loads cleanly
-- Confirm with user before: deleting/replacing `data.json`, changing seed shape, swapping the Claude model, upgrading SDK majors, adding paid external APIs, auth/session changes
-- Safe to proceed: additive API routes, single-file refactors, new tests
+Project-wide done criteria and guardrails live in `../../CLAUDE.md` (loaded by default in every session). You MUST defer to that file as the single source of truth and follow every guardrail listed there. NEVER restate the rules here — they rot.

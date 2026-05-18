@@ -17,6 +17,23 @@ AI-powered children's book store. React + Express + Claude API. Working storefro
 | `e2e/` | Playwright 1.52, TS | @qa | `.claude/agents/qa.md` |
 | `docs/` | Backlog, research notes | — | — |
 
+## Branching
+
+Trunk-based off `master`. Short-lived branches, squash-merge PRs. Prefixes follow conventional commits — the type before the slash drives changelog grouping and lets you scan `git log` at a glance.
+
+| Prefix | Use for |
+|--------|---------|
+| `feat/` | New user-facing capability |
+| `fix/` | Bug fix |
+| `chore/` | Tooling, deps, config — no user-facing change |
+| `docs/` | Documentation only |
+| `test/` | Tests only |
+| `refactor/` | Internal restructure, no behavior change |
+
+Descriptor is kebab-case and scope-y, not a sentence: `feat/illustration-iteration`, `fix/cart-session-leak`, `chore/bump-anthropic-sdk`.
+
+**Agent worktree branches** prefix with `agent/` first: `agent/feat/illustration-iteration`, `agent/fix/...`. Distinguishes agent-driven work from yours in `git log` and PR lists. The `/start-task` command creates these automatically.
+
 ## Build & run
 
 ```bash
@@ -49,23 +66,23 @@ The main session orchestrates: reads for context, plans, delegates, then verifie
 
 ## Done criteria
 
-Don't claim a feature complete until:
-1. Relevant tests pass (server + client + e2e if a user-facing flow changed)
-2. UI changes manually verified in browser in **both** light and dark mode
-3. No TypeScript errors
-4. If `data.json` shape changed, confirm seed still loads cleanly
+NEVER claim a feature complete until ALL of:
+1. Relevant tests MUST pass (server + client + e2e if a user-facing flow changed)
+2. UI changes MUST be manually verified in browser in **both** light and dark mode
+3. NO TypeScript errors
+4. If `data.json` shape changed, seed MUST load cleanly
 
 ## Guardrails (cross-cutting)
 
-**Confirm with user before:**
-- Deleting or replacing `data.json` (use `resetStore()` for tests, never `rm`)
+**ALWAYS confirm with user before:**
+- Deleting or replacing `data.json` (NEVER `rm` — use `resetStore()` for tests)
 - Changing seed data shape (breaks existing carts/orders)
 - Swapping the Claude model or upgrading SDK major versions
 - Adding new paid external APIs (image generation, payments)
 - Adding auth or session changes (UUID session model is load-bearing)
 - Deleting tests rather than fixing them
 
-**Safe to proceed without asking:**
+**Safe without asking:**
 - UI tweaks, new components, additive routes, new tests
 - Refactoring within a single file
 - Dependencies that fit existing stack

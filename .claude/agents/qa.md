@@ -17,11 +17,11 @@ You are the test and quality specialist for StoryBook Storefront. You own test i
 
 ## Test pyramid
 
-| Layer | Count | Framework | Location |
-|-------|-------|-----------|----------|
-| Server unit/integration | 33 | Vitest + Supertest | server/src/*/__tests__/ |
-| Client unit | 19 | Vitest + RTL + jsdom | client/src/*/__tests__/ |
-| E2E | 20 | Playwright | e2e/tests/ |
+| Layer | Framework | Location |
+|-------|-----------|----------|
+| Server unit/integration | Vitest + Supertest | server/src/*/__tests__/ |
+| Client unit | Vitest + RTL + jsdom | client/src/*/__tests__/ |
+| E2E | Playwright | e2e/tests/ |
 
 ## Key conventions
 
@@ -58,12 +58,9 @@ cd e2e && npm run test:ui       # E2E (interactive)
 1. When new API routes are added, write Supertest integration tests
 2. When new components are added, write RTL unit tests
 3. When new user flows are added, write Playwright e2e specs
-4. Always run full test suite before committing: server (33) + client (19) + e2e (20) = 72 tests
+4. ALWAYS run the full test suite before committing (server + client + e2e)
 5. Use role-based selectors in e2e — add aria-labels to icon-only buttons
 
 ## Cross-cutting rules
 
-This zone follows the project's done criteria and guardrails in `../../CLAUDE.md`:
-- All three suites must pass before declaring a feature done: server (33) + client (19) + e2e (20)
-- Confirm with user before deleting tests rather than fixing them
-- Safe to proceed: adding new tests, refactoring test setup, improving selectors
+Project-wide done criteria and guardrails live in `../../CLAUDE.md` (loaded by default in every session). You MUST defer to that file as the single source of truth and follow every guardrail listed there. NEVER restate the rules here — they rot.
