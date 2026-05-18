@@ -25,14 +25,17 @@ const publishedBook: Book = {
   cover_color: '#ff6600',
   cover_url: null,
   price: 12.99,
-  is_featured: 0,
-  is_user_created: 1,
+  is_featured: false,
+  is_user_created: true,
   status: 'published',
   version: 1,
   characters: [],
+  characters_json: null,
   style_descriptor: null,
   style_reference_url: null,
   created_by: 'user-1',
+  created_at: new Date().toISOString(),
+  deleted_at: null,
 }
 
 const unpublishedBook: Book = {

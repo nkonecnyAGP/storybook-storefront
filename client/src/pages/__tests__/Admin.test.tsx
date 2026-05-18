@@ -64,14 +64,16 @@ const sampleBooks: AdminBook[] = [
     cover_color: '#ff6600',
     cover_url: null,
     price: 9.99,
-    is_featured: 1,
-    is_user_created: 0,
+    is_featured: true,
+    is_user_created: false,
     status: 'published',
     version: 1,
     characters: [],
+    characters_json: null,
     style_descriptor: null,
     style_reference_url: null,
     created_by: null,
+    created_at: new Date().toISOString(),
     deleted_at: null,
     creator: null,
   },
@@ -86,14 +88,16 @@ const sampleBooks: AdminBook[] = [
     cover_color: '#cc66ff',
     cover_url: null,
     price: 11.99,
-    is_featured: 0,
-    is_user_created: 1,
+    is_featured: false,
+    is_user_created: true,
     status: 'published',
     version: 1,
     characters: [],
+    characters_json: null,
     style_descriptor: null,
     style_reference_url: null,
     created_by: 'creator-id',
+    created_at: new Date().toISOString(),
     deleted_at: null,
     creator: { email: 'creator@example.com', name: 'Creator' },
   },
@@ -169,7 +173,7 @@ function setupFetchMock(opts: {
       const id = url.split('/')[4]!
       const found = (opts.books ?? sampleBooks).find(b => b.id === id) ?? sampleBooks[0]!
       const body = init?.body ? (JSON.parse(init.body as string) as { is_featured: boolean }) : { is_featured: false }
-      const updated: AdminBook = opts.featuredBook ?? { ...found, is_featured: body.is_featured ? 1 : 0 }
+      const updated: AdminBook = opts.featuredBook ?? { ...found, is_featured: body.is_featured }
       return Promise.resolve(
         new Response(JSON.stringify(updated), {
           status: 200,

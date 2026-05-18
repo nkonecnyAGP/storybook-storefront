@@ -17,60 +17,26 @@ export interface AdminUser {
   created_at: string;
 }
 
-export type CharacterRole = 'primary' | 'antagonist' | 'supporting';
+// Character, Book, BookWithPages, OrphanIllustration, Page, IllustrationVersion,
+// and BookVersion are sourced from @storybook/shared (Zod schemas).
+// Do not redeclare them here — see shared/src/books.ts and shared/src/admin.ts.
+// Re-exported so existing in-client consumers can keep importing from '../types'.
+export type { Character, CharacterRole } from '@storybook/shared';
+export type { Book } from '@storybook/shared';
+export type { BookWithPages } from '@storybook/shared';
+export type { OrphanIllustration } from '@storybook/shared';
+export type { Page } from '@storybook/shared';
 
-export interface Character {
-  role: CharacterRole;
-  name: string;
-  descriptor?: string;
-  relationship?: string;
-}
+import type { Book } from '@storybook/shared';
 
-export interface Book {
-  id: string;
-  title: string;
-  author: string;
-  description: string;
-  theme: string;
-  age_range: string;
-  cover_emoji: string;
-  cover_color: string;
-  cover_url: string | null;
-  price: number;
-  is_featured: number;
-  is_user_created: number;
-  status: string;
-  version: number;
-  characters: Character[];
-  style_descriptor: string | null;
-  style_reference_url: string | null;
-  created_by: string | null;
-  created_at?: string;
-  deleted_at?: string | null;
-}
-
-export interface BookWithPages extends Book {
-  pages: Page[];
-}
-
+// AdminBook keeps the local `extends Book` shape (option B from the migration
+// plan): the shared `Book` is now the source of truth, and we add the admin
+// list's `creator` join + retain `deleted_at` as a non-null contract here.
+// AdminBookListItem in shared has the same fields; this local alias preserves
+// the existing `AdminBook` symbol and leaves room for client-only admin fields.
 export interface AdminBook extends Book {
   deleted_at: string | null;
   creator: { email: string; name: string } | null;
-}
-
-export interface OrphanIllustration {
-  path: string;
-  book_exists: boolean;
-  soft_deleted: boolean;
-}
-
-export interface Page {
-  id: number;
-  book_id: string;
-  page_number: number;
-  text: string;
-  illustration_description: string;
-  illustration_url: string | null;
 }
 
 // CartItem, Order, and OrderItem are sourced from @storybook/shared (Zod schemas).
@@ -82,24 +48,5 @@ export interface Page {
 export type { CartItem } from '@storybook/shared';
 export type { Order, OrderItem } from '@storybook/shared';
 
-export interface IllustrationVersion {
-  url: string;
-  version: number;
-  created_at: string;
-  feedback: string | null;
-}
-
-export interface BookVersion {
-  id: number;
-  book_id: string;
-  version: number;
-  pages_json: string;
-  description: string | null;
-  characters_json: string | null;
-  created_at: string;
-  pages: Array<{
-    page_number: number;
-    text: string;
-    illustrationDescription: string;
-  }>;
-}
+export type { IllustrationVersion } from '@storybook/shared';
+export type { BookVersion } from '@storybook/shared';
