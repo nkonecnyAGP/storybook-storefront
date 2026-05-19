@@ -79,3 +79,14 @@ export type OrphanIllustration = z.infer<typeof OrphanIllustrationSchema>;
 
 export const OrphanIllustrationListResponseSchema = z.array(OrphanIllustrationSchema);
 export type OrphanIllustrationListResponse = z.infer<typeof OrphanIllustrationListResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// DELETE /api/admin/orphan-illustrations/:id — remove a directory on disk
+// that has no live book row. `deleted` is the directory name that was removed
+// (echoed back so the client can update its local list without re-fetching).
+// ---------------------------------------------------------------------------
+export const OrphanDeleteResponseSchema = z.object({
+  success: z.boolean(),
+  deleted: z.string(),
+});
+export type OrphanDeleteResponse = z.infer<typeof OrphanDeleteResponseSchema>;

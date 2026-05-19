@@ -23,6 +23,12 @@ const seedPages = [
   { book_id: 'luna-star-garden', page_number: 5, text: 'Page 5 text', illustration_description: 'Illustration 5' },
 ];
 
+// resetDatabase: wipes every table, then re-seeds 6 books + 5 luna-star-garden
+// pages. Verified for OPS.2: deleteMany clears any rows that prior tests soft-
+// deleted, and the re-seed inserts fresh rows so seeded books always have
+// deleted_at = null (Prisma default). No seeded users, so role/deleted_at on
+// User are tested via per-test /register calls which inherit the schema
+// defaults (role='user', deleted_at=null).
 export async function resetDatabase() {
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();

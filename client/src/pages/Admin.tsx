@@ -1,8 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, Navigate } from 'react-router-dom'
-import { Shield, Users, BookOpen, FolderOpen, Loader2, RotateCcw, Star, AlertCircle } from 'lucide-react'
+import { Shield, Users, BookOpen, FolderOpen, Loader2, RotateCcw, Star, AlertCircle, Trash2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import type { AdminUser, AdminBook, OrphanIllustration } from '../types'
+
+// The orphan listing returns `path` as `/illustrations/<entry>`. The delete
+// endpoint takes the entry (directory name) as `:id`.
+function orphanIdFromPath(path: string): string {
+  const segments = path.split('/').filter(Boolean)
+  return segments[segments.length - 1] ?? path
+}
 
 function formatRelativeTime(iso: string): string {
   const then = new Date(iso).getTime()
@@ -39,6 +46,9 @@ export default function Admin() {
   const [orphans, setOrphans] = useState<OrphanIllustration[]>([])
   const [orphansLoading, setOrphansLoading] = useState(true)
   const [orphansError, setOrphansError] = useState('')
+  // Per-row state for the Delete action, keyed by directory entry id.
+  const [orphanDeleting, setOrphanDeleting] = useState<Record<string, boolean>>({})
+  const [orphanRowError, setOrphanRowError] = useState<Record<string, string>>({})
 
   const token = user?.token
 
@@ -152,6 +162,50 @@ export default function Admin() {
     }
   }
 
+  const deleteOrphan = async (orphan: OrphanIllustration) => {
+    if (!token) return
+    const id = orphanIdFromPath(orphan.path)
+    if (!id) return
+    if (!window.confirm(`Delete orphaned directory ${id}? This cannot be undone.`)) return
+
+    setOrphanDeleting(prev => ({ ...prev, [id]: true }))
+    setOrphanRowError(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+
+    try {
+      const res = await fetch(`/api/admin/orphan-illustrations/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        // 404 is "already gone" — treat as success and drop the row.
+        if (res.status === 404) {
+          setOrphans(prev => prev.filter(o => o.path !== orphan.path))
+          return
+        }
+        // 409 means the directory belongs to a live book — shouldn't happen
+        // because the listing filters those out, but surface it cleanly.
+        let message = 'Delete failed.'
+        if (res.status === 409) message = "Can't delete — directory belongs to a live book."
+        else if (res.status === 400) message = 'Delete rejected (invalid path).'
+        setOrphanRowError(prev => ({ ...prev, [id]: message }))
+        return
+      }
+      setOrphans(prev => prev.filter(o => o.path !== orphan.path))
+    } catch {
+      setOrphanRowError(prev => ({ ...prev, [id]: 'Network error. Try again.' }))
+    } finally {
+      setOrphanDeleting(prev => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+    }
+  }
+
   const toggleFeatured = async (book: AdminBook) => {
     if (!token) return
     const next = !book.is_featured
@@ -236,6 +290,9 @@ export default function Admin() {
           loading={orphansLoading}
           error={orphansError}
           onRetry={fetchOrphans}
+          onDelete={deleteOrphan}
+          deletingById={orphanDeleting}
+          errorById={orphanRowError}
         />
       )}
     </div>
@@ -453,9 +510,20 @@ interface OrphansTabProps {
   loading: boolean
   error: string
   onRetry: () => void
+  onDelete: (orphan: OrphanIllustration) => void
+  deletingById: Record<string, boolean>
+  errorById: Record<string, string>
 }
 
-function OrphansTab({ orphans, loading, error, onRetry }: OrphansTabProps) {
+function OrphansTab({
+  orphans,
+  loading,
+  error,
+  onRetry,
+  onDelete,
+  deletingById,
+  errorById,
+}: OrphansTabProps) {
   if (loading) return <LoadingRow message="Loading orphan illustrations..." />
   if (error) return <ErrorRow message={error} onRetry={() => void onRetry()} />
   if (orphans.length === 0) {
@@ -473,6 +541,7 @@ function OrphansTab({ orphans, loading, error, onRetry }: OrphansTabProps) {
           <tr className="text-left text-gray-600 dark:text-gray-300">
             <th className="px-4 py-3 font-semibold">Path</th>
             <th className="px-4 py-3 font-semibold">Book row</th>
+            <th className="px-4 py-3 font-semibold">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -486,11 +555,45 @@ function OrphansTab({ orphans, loading, error, onRetry }: OrphansTabProps) {
               label = 'Exists'
               tone = 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
             }
+            const id = orphanIdFromPath(o.path)
+            const isDeleting = !!deletingById[id]
+            const rowError = errorById[id]
             return (
               <tr key={o.path} className="text-gray-700 dark:text-gray-200">
                 <td className="px-4 py-3 font-mono text-xs break-all">{o.path}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${tone}`}>{label}</span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => void onDelete(o)}
+                      disabled={isDeleting}
+                      aria-label={`Delete orphan ${id}`}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-400 text-white cursor-pointer border-none disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isDeleting ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 size={12} />
+                          Delete
+                        </>
+                      )}
+                    </button>
+                    {rowError && (
+                      <span
+                        role="alert"
+                        className="text-xs text-red-700 dark:text-red-300 flex items-center gap-1"
+                      >
+                        <AlertCircle size={12} />
+                        {rowError}
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             )
