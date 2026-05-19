@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { readdir } from 'fs/promises';
-import { join } from 'path';
+import { readdir, rm, stat } from 'fs/promises';
+import { join, resolve, sep } from 'path';
 import type { Request, Response, NextFunction } from 'express';
 import {
   AdminBookListResponseSchema,
@@ -9,6 +9,7 @@ import {
   AdminUserListResponseSchema,
   AdminUserRestoreResponseSchema,
   OrphanIllustrationListResponseSchema,
+  OrphanDeleteResponseSchema,
   type AdminBookFeaturedRequest,
   type Character,
 } from '@storybook/shared';
@@ -239,6 +240,61 @@ router.get(
     }
 
     res.json(orphans);
+  },
+);
+
+router.delete(
+  '/orphan-illustrations/:id',
+  adminGate,
+  validate({
+    name: 'DELETE /api/admin/orphan-illustrations/:id',
+    response: OrphanDeleteResponseSchema,
+  }),
+  async (req: Request<{ id: string }>, res: Response) => {
+    const { id } = req.params;
+
+    // Path-traversal guard. Reject any `id` containing path separators or `..`
+    // *before* hitting the filesystem. Then resolve and verify the result is
+    // still strictly inside ILLUSTRATIONS_DIR — defense in depth in case a
+    // future refactor weakens the surface check.
+    if (id.includes('..') || id.includes('/') || id.includes('\\') || id.includes('\0')) {
+      return res.status(400).json({ error: 'Invalid request: path traversal' });
+    }
+
+    const illustrationsRoot = resolve(ILLUSTRATIONS_DIR);
+    const targetPath = resolve(illustrationsRoot, id);
+    // The resolved target MUST be a direct child of illustrationsRoot. We
+    // require the prefix + separator so `/foo/illustrations` doesn't match
+    // `/foo/illustrations-evil`.
+    if (
+      targetPath === illustrationsRoot ||
+      !targetPath.startsWith(illustrationsRoot + sep)
+    ) {
+      return res.status(400).json({ error: 'Invalid request: path traversal' });
+    }
+
+    // 404 if the directory doesn't exist on disk.
+    try {
+      const s = await stat(targetPath);
+      if (!s.isDirectory()) {
+        return res.status(404).json({ error: 'Orphan directory not found' });
+      }
+    } catch {
+      return res.status(404).json({ error: 'Orphan directory not found' });
+    }
+
+    // 409 if the directory matches a *live* book row. (Soft-deleted books are
+    // still considered orphan-of-orphan and may be cleaned up — matches the
+    // listing semantics in GET /api/admin/orphan-illustrations.)
+    const book = await prisma.book.findUnique({ where: { id } });
+    if (book && book.deleted_at === null) {
+      return res
+        .status(409)
+        .json({ error: 'Cannot delete: directory belongs to a live book' });
+    }
+
+    await rm(targetPath, { recursive: true, force: true });
+    res.json({ success: true, deleted: id });
   },
 );
 

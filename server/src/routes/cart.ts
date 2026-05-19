@@ -24,8 +24,13 @@ router.get(
   }),
   async (req: Request<{ sessionId: string }>, res: Response) => {
     const { sessionId } = req.params;
+    // Filter out cart items whose book has been soft-deleted. Silent-hide UX:
+    // the item simply disappears from the cart on next fetch. No banner, no 4xx.
+    // Prisma relation filter executes in a single round-trip and the response
+    // stays schema-valid (drift catch-net would fire if a null book leaked
+    // through the join).
     const items = await prisma.cartItem.findMany({
-      where: { session_id: sessionId },
+      where: { session_id: sessionId, book: { deleted_at: null } },
       include: { book: true },
     });
 
@@ -56,7 +61,9 @@ router.post(
     const { bookId, quantity } = req.body as CartAddItemRequest;
     const { sessionId } = req.params;
 
-    const book = await prisma.book.findUnique({ where: { id: bookId } });
+    // findFirst with deleted_at: null so a soft-deleted book behaves identically
+    // to a missing one — same 404, no information leak about tombstoned rows.
+    const book = await prisma.book.findFirst({ where: { id: bookId, deleted_at: null } });
     if (!book) {
       return res.status(404).json({ error: 'Book not found' });
     }

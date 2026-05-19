@@ -119,6 +119,7 @@ function setupFetchMock(opts: {
   restoredUser?: AdminUser
   restoredBook?: AdminBook
   featuredBook?: AdminBook
+  deleteOrphanStatus?: number
 } = {}) {
   const calls: FetchCall[] = []
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
@@ -146,6 +147,24 @@ function setupFetchMock(opts: {
       return Promise.resolve(
         new Response(JSON.stringify(opts.orphans ?? sampleOrphans), {
           status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+    if (/^\/api\/admin\/orphan-illustrations\/[^/]+$/.test(url) && method === 'DELETE') {
+      const status = opts.deleteOrphanStatus ?? 200
+      const id = decodeURIComponent(url.split('/').pop()!)
+      if (status >= 200 && status < 300) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ success: true, deleted: id }), {
+            status,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        )
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: 'delete failed' }), {
+          status,
           headers: { 'Content-Type': 'application/json' },
         }),
       )
@@ -283,6 +302,99 @@ describe('Admin page', () => {
       const activeCells = screen.getAllByText('Active')
       // Both users now Active (was 1, now 2).
       expect(activeCells.length).toBe(2)
+    })
+  })
+
+  describe('Orphans tab — delete', () => {
+    const multipleOrphans: OrphanIllustration[] = [
+      { path: '/illustrations/orphan-1', book_exists: false, soft_deleted: false },
+      { path: '/illustrations/orphan-2', book_exists: true, soft_deleted: true },
+    ]
+
+    async function switchToOrphansTab() {
+      const orphansBtn = await screen.findByRole('button', { name: /^Orphans/ })
+      await act(async () => {
+        fireEvent.click(orphansBtn)
+      })
+    }
+
+    it('renders a Delete button on each orphan row', async () => {
+      setupFetchMock({ orphans: multipleOrphans })
+      renderAdmin()
+      await switchToOrphansTab()
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Delete orphan orphan-1/i })).toBeInTheDocument()
+      })
+      expect(screen.getByRole('button', { name: /Delete orphan orphan-2/i })).toBeInTheDocument()
+    })
+
+    it('does nothing when the confirm dialog is cancelled', async () => {
+      const { calls } = setupFetchMock({ orphans: multipleOrphans })
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      renderAdmin()
+      await switchToOrphansTab()
+
+      const deleteBtn = await screen.findByRole('button', { name: /Delete orphan orphan-1/i })
+      await act(async () => {
+        fireEvent.click(deleteBtn)
+      })
+
+      expect(confirmSpy).toHaveBeenCalledTimes(1)
+      // No DELETE call was issued, and the row is still on screen.
+      expect(calls.some(c => c.init?.method === 'DELETE')).toBe(false)
+      expect(screen.getByText('/illustrations/orphan-1')).toBeInTheDocument()
+    })
+
+    it('removes the row on confirm + success, without refetching the list', async () => {
+      const { calls } = setupFetchMock({ orphans: multipleOrphans })
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      renderAdmin()
+      await switchToOrphansTab()
+
+      const deleteBtn = await screen.findByRole('button', { name: /Delete orphan orphan-1/i })
+      await act(async () => {
+        fireEvent.click(deleteBtn)
+      })
+
+      // The DELETE went to the right URL with auth.
+      await waitFor(() => {
+        const call = calls.find(c => c.url === '/api/admin/orphan-illustrations/orphan-1')
+        expect(call).toBeDefined()
+        expect(call?.init?.method).toBe('DELETE')
+        const headers = call?.init?.headers as Record<string, string> | undefined
+        expect(headers?.Authorization).toBe('Bearer admin-token')
+      })
+
+      // Row disappears from local state.
+      await waitFor(() => {
+        expect(screen.queryByText('/illustrations/orphan-1')).not.toBeInTheDocument()
+      })
+      // The other orphan row is still there — not a full refetch.
+      expect(screen.getByText('/illustrations/orphan-2')).toBeInTheDocument()
+      // And we didn't refetch the orphan list.
+      const listFetches = calls.filter(
+        c => c.url === '/api/admin/orphan-illustrations' && (c.init?.method ?? 'GET') === 'GET',
+      )
+      expect(listFetches.length).toBe(1)
+    })
+
+    it('shows an inline error on the row when the delete fails', async () => {
+      setupFetchMock({ orphans: multipleOrphans, deleteOrphanStatus: 409 })
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      renderAdmin()
+      await switchToOrphansTab()
+
+      const deleteBtn = await screen.findByRole('button', { name: /Delete orphan orphan-1/i })
+      await act(async () => {
+        fireEvent.click(deleteBtn)
+      })
+
+      // Row stays, and an alert with the error text shows up.
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument()
+      })
+      expect(screen.getByText('/illustrations/orphan-1')).toBeInTheDocument()
     })
   })
 

@@ -1,8 +1,29 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
+import { mkdir, rm, writeFile } from 'fs/promises';
+import { existsSync } from 'fs';
+import { join, resolve } from 'path';
 import { createTestApp, resetDatabase } from '../../__tests__/setup';
 import prisma from '../../db/prisma';
+
+// Mirrors ILLUSTRATIONS_DIR computation in admin.ts. The test file lives at
+// server/src/routes/__tests__/admin.test.ts, so two levels up is server/src/,
+// then ../public/illustrations resolves to server/public/illustrations — same
+// directory the route reads from.
+const ILLUSTRATIONS_DIR = resolve(import.meta.dirname, '../../../public/illustrations');
+
+/**
+ * Create a fake illustration directory with one placeholder file inside so
+ * the route's stat() check passes. Track created dirs so afterEach can clean
+ * them up even on test failure.
+ */
+async function createOrphanDir(name: string): Promise<string> {
+  const dir = join(ILLUSTRATIONS_DIR, name);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'placeholder.png'), 'fake-image-bytes');
+  return dir;
+}
 
 /**
  * Returns a registered user's token. `role` defaults to 'user' — pass 'admin'
@@ -207,6 +228,155 @@ describe('Admin API routes', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ is_featured: true });
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('DELETE /api/admin/orphan-illustrations/:id', () => {
+    // Track every directory created during a test so afterEach can clean up
+    // even if assertions fail mid-test.
+    const createdDirs: string[] = [];
+
+    async function trackOrphanDir(name: string): Promise<string> {
+      const dir = await createOrphanDir(name);
+      createdDirs.push(dir);
+      return dir;
+    }
+
+    afterEach(async () => {
+      while (createdDirs.length > 0) {
+        const dir = createdDirs.pop();
+        if (dir) await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('returns 401 without auth', async () => {
+      const res = await request(app).delete('/api/admin/orphan-illustrations/anything');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 403 for a non-admin user', async () => {
+      const { token } = await createUserAndGetToken(app, 'regular@example.com');
+      const res = await request(app)
+        .delete('/api/admin/orphan-illustrations/anything')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('deletes an orphan directory and echoes the dir name', async () => {
+      const { token: adminToken } = await createUserAndGetToken(app, 'admin@example.com', 'admin');
+      const orphanName = 'test-orphan-no-book-row';
+      const dir = await trackOrphanDir(orphanName);
+
+      // Sanity: dir exists before the request.
+      expect(existsSync(dir)).toBe(true);
+
+      const res = await request(app)
+        .delete(`/api/admin/orphan-illustrations/${orphanName}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, deleted: orphanName });
+      expect(existsSync(dir)).toBe(false);
+    });
+
+    it('after deletion, the dir no longer appears in the orphan list', async () => {
+      const { token: adminToken } = await createUserAndGetToken(app, 'admin@example.com', 'admin');
+      const orphanName = 'test-orphan-disappears-from-list';
+      await trackOrphanDir(orphanName);
+
+      const before = await request(app)
+        .get('/api/admin/orphan-illustrations')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(before.body.some((o: { path: string }) => o.path.endsWith(`/${orphanName}`))).toBe(
+        true,
+      );
+
+      const del = await request(app)
+        .delete(`/api/admin/orphan-illustrations/${orphanName}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(del.status).toBe(200);
+
+      const after = await request(app)
+        .get('/api/admin/orphan-illustrations')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(after.body.some((o: { path: string }) => o.path.endsWith(`/${orphanName}`))).toBe(
+        false,
+      );
+    });
+
+    it('deletes a directory for a soft-deleted book (orphan-of-orphan)', async () => {
+      const { token: adminToken } = await createUserAndGetToken(app, 'admin@example.com', 'admin');
+      // Use a seeded book id so a real row exists, then tombstone it. The
+      // listing endpoint surfaces this as { soft_deleted: true } — deletion
+      // should still be allowed.
+      const orphanName = 'luna-star-garden';
+      await trackOrphanDir(orphanName);
+      await prisma.book.update({
+        where: { id: orphanName },
+        data: { deleted_at: new Date() },
+      });
+
+      const res = await request(app)
+        .delete(`/api/admin/orphan-illustrations/${orphanName}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, deleted: orphanName });
+    });
+
+    it('returns 409 when the directory belongs to a live book', async () => {
+      const { token: adminToken } = await createUserAndGetToken(app, 'admin@example.com', 'admin');
+      // luna-star-garden is seeded live; even if its directory exists on disk,
+      // the route should refuse to delete it. (This is defense-in-depth — the
+      // listing endpoint already filters live books out, so this 409 should
+      // never fire under normal admin UI flow.)
+      const orphanName = 'luna-star-garden';
+      const dir = await trackOrphanDir(orphanName);
+
+      const res = await request(app)
+        .delete(`/api/admin/orphan-illustrations/${orphanName}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Cannot delete: directory belongs to a live book');
+      // Directory MUST still exist after a refused delete.
+      expect(existsSync(dir)).toBe(true);
+    });
+
+    it('returns 404 when the directory does not exist on disk', async () => {
+      const { token: adminToken } = await createUserAndGetToken(app, 'admin@example.com', 'admin');
+      const res = await request(app)
+        .delete('/api/admin/orphan-illustrations/this-directory-does-not-exist-on-disk')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Orphan directory not found');
+    });
+
+    it('returns 400 on classic path-traversal attempts', async () => {
+      const { token: adminToken } = await createUserAndGetToken(app, 'admin@example.com', 'admin');
+
+      // Express normalizes most of these in the URL; the ones that reach the
+      // handler still need to be refused by the in-handler guard. Use the
+      // .delete(<url>) form so supertest doesn't pre-normalize.
+      const attacks = [
+        '/api/admin/orphan-illustrations/..%2Fetc',
+        '/api/admin/orphan-illustrations/..%5Csecret',
+        '/api/admin/orphan-illustrations/foo%2F..%2F..%2Fetc',
+      ];
+      for (const url of attacks) {
+        const res = await request(app)
+          .delete(url)
+          .set('Authorization', `Bearer ${adminToken}`);
+        expect(res.status, `expected 400 for ${url}, got ${res.status}`).toBe(400);
+        expect(res.body.error).toBe('Invalid request: path traversal');
+      }
+    });
+
+    it('refuses bare ".." even when illustrations dir is missing', async () => {
+      // If something escapes the prefix check this would 404, but the surface
+      // guard rejects it first.
+      const { token: adminToken } = await createUserAndGetToken(app, 'admin@example.com', 'admin');
+      const res = await request(app)
+        .delete('/api/admin/orphan-illustrations/..%2F..')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(400);
     });
   });
 
