@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import prisma from '../db/prisma';
 import { getAuthUser } from './auth';
 import { generateCover, generateIllustration } from '../services/illustrations';
+import { parseAiJson } from '../services/parseAiJson';
 import type { Request, Response } from 'express';
 import type { Character, CharacterRole } from '../types';
 
@@ -153,17 +154,7 @@ Make the story warm, engaging, and age-appropriate. Use vivid but simple languag
     }
     const content: string = firstBlock.text;
 
-    let story: GeneratedStory;
-    try {
-      story = JSON.parse(content) as GeneratedStory;
-    } catch {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        story = JSON.parse(jsonMatch[0]) as GeneratedStory;
-      } else {
-        throw new Error('Failed to parse story from AI response');
-      }
-    }
+    const story = parseAiJson(content) as GeneratedStory;
 
     const user = await getAuthUser(req);
 

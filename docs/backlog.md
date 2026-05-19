@@ -22,8 +22,10 @@ Sequential dependency chain — each item unblocks the next.
 
 ## Tier 3 — Operations & Hygiene
 
-- [ ] **OPS.1** — Replace demo-seed examples. `server/prisma/demo-seed.ts` currently creates the demo user only; `DEMO_BOOKS` was emptied because the image-derived vision rewrites were low quality. Replace with 3-5 books actually generated via the in-app story generator (story + illustrations + character consistency). Capture their UUIDs in `DEMO_BOOKS` so seed reruns can recreate them deterministically.
+- [x] **OPS.1** — Replace demo-seed examples. Shipped 2026-05-19 with a fixture-driven seed (`server/prisma/demo-seed-fixtures/*.json` + committed PNGs at `server/public/illustrations/{book-id}/`). One demo book ("A Spot for Sunny") rather than the original 3-5; richer test data stays in your local `dev.db` per the preservation pattern in CLAUDE.md. See [Completed work](#completed-work) for the rationale and non-obvious conventions.
 - [ ] **OPS.2** — Admin role on User (referenced in commit f71d253). Add `role: 'user' | 'admin'`, soft-delete on User and Book, and an admin-only API surface to inspect/clean orphaned state.
+- [ ] **OPS.4** — Add `server/.env.example` documenting expected vars (`DATABASE_URL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `PORT`). Discovered during the OPS.1 spike when a missing `ANTHROPIC_API_KEY` returned a 500 with no signposting back to "you need to set this var." Fresh checkouts hit the failure blind. ~5-minute fix.
+- [ ] **OPS.5** — Gitignore `.claude/settings.local.json`. It's local-only Claude Code settings but currently shows as untracked in every `git status`, polluting routine output. One-line addition to root `.gitignore`.
 - [x] **OPS.3** — Implement client/server type-sharing via Zod, with OpenAPI as a forward-compatible upgrade path. Shipped 2026-05-18 across PRs #22 (foundation + `orders.ts`), #23 (`cart.ts`), and #24 (`books.ts`/`admin.ts`/`test.ts`). See [Completed work](#completed-work) for non-obvious conventions.
 
   **Context.** `client/src/types.ts` and `server/src/types.ts` are hand-maintained duplicates with no compile-time link. Drift surfaced as a real production bug in OrderConfirmation (`book_title` vs `title` — order summary rendered empty book titles to every customer). Wire-shape assertions in `.claude/agents/qa.md` are an interim catch-net; this item is the structural fix.
@@ -55,13 +57,31 @@ Aspirational, not committed. Captured so structural decisions today stay forward
 
 - **Mobile / non-TS clients.** If the storefront proves out as a real product, a native mobile companion (RN, Swift, or Kotlin) is an avenue worth exploring. This is part of why OPS.3 chose Zod-as-source-of-truth with a Zod → OpenAPI upgrade path: when a non-TS client lands, we generate the OpenAPI spec from existing Zod schemas via `@asteasolutions/zod-to-openapi` rather than rewriting the contract layer. No work today, just preserving the optionality.
 
+- **Illustration character grounding.** The OPS.1 spike hit a real quality issue: the image model invented a golden retriever puppy on page 4 when the story introduced "Sunny" (a girl) by name without a visual descriptor. The generator only requires the *primary* character to have a descriptor; supporting characters and antagonists referenced by name are invented per-illustration with no continuity. For demo polish — or to claim "character consistency" as a product strength — anchor named characters to "human child" by default in the illustration prompt, and consider promoting all named characters to required descriptors at story-generation time. Not blocking; T1.4 (illustration iteration) provides the per-page regen escape hatch.
+
 ## Working notes
 
 Update this section as work proceeds. Subagents read from here.
 
-_(Currently empty — last entry was the OPS.3 migration, now collapsed into Completed work below.)_
+_(Currently empty — last entry was the OPS.1 demo-seed refresh, now collapsed into Completed work below.)_
 
 ## Completed work
+
+### OPS.1 — Demo-seed refresh (shipped 2026-05-19)
+
+Replaced the rejected stub-pointer + vision-rewrite approach in `server/prisma/demo-seed.ts` with a fixture-driven seed. One demo book ("A Spot for Sunny") committed at `server/prisma/demo-seed-fixtures/spot-for-sunny.json` + 6 PNG illustrations (~13.7MB) at `server/public/illustrations/b2fa23cf-3156-4b89-83e7-82d98c32c8b7/`. Original backlog asked for 3-5 books; scope reframed to 1 because the storefront-fresh-clone use case only needs proof that Community renders content, while richer testing belongs in a developer's local `dev.db` (preservation pattern documented in CLAUDE.md).
+
+**Non-obvious conventions worth preserving:**
+
+- **Two `.gitignore` files contribute** — root `.gitignore` AND `server/.gitignore`. The PNG path lived under the server's ignore. When adding future demo books, update BOTH gitignores and use `dir/*` + `!dir/subdir/` form, NOT `dir/`, because gitignore cannot re-include children of an ignored directory.
+- **Add new demo books by appending a fixture file + re-include line** — drop a new JSON in `server/prisma/demo-seed-fixtures/`, commit PNGs at `server/public/illustrations/{stable-uuid}/`, and add a `!server/public/illustrations/{stable-uuid}/` line to both gitignores. Seed picks it up automatically (reads the directory).
+- **`db:reset` does NOT auto-run any seed** — no `prisma.seed` field in `server/package.json`. To repopulate after a reset, chain `db:reset && db:seed && db:seed-demo` yourself.
+- **Demo books are owned by the demo user** — the seed resolves `created_by` to `demo@storybook.local`'s id so the demo book appears in MyBooks when logged in as the demo user (showcases more functionality than an unowned community book would).
+- **Local books survive `db:seed` and `db:seed-demo`** — both are upsert-only. Only `db:reset` is destructive. See CLAUDE.md "Local dev.db" section for the preservation pattern (auto-snapshot + manual `cp` fallback).
+- **Page-4 of "A Spot for Sunny" uses the regenerated illustration** — `Page.illustration_url` is `/illustrations/.../page-4-v2.png`. Original v1 had a content-mismatch (image model invented a dog instead of a girl named Sunny). The fixture captures only v2; v1 is not on disk. Worth knowing if anyone wonders why the file naming is irregular.
+
+**Adjacent fix folded into this PR — generate.ts JSON parse fragility:**
+Spike attempt 1 failed at `server/src/routes/generate.ts:162` with `SyntaxError: Expected ',' or '}' after property value in JSON`. Anthropic returns malformed JSON occasionally (unescaped quotes/apostrophes in long story strings). The route's fallback at lines 156-166 just re-tried `JSON.parse` on the same content extracted via regex — didn't repair anything. Added `jsonrepair` as a real fallback in a new shared helper at `server/src/services/parseAiJson.ts`. Applied to both `generate.ts` and `books.ts` revise endpoints (same bug class). 8 new unit tests, all 93 server tests pass. Folded into this PR because it directly unblocked the OPS.1 spike.
 
 ### OPS.3 — Zod client/server type sharing (shipped 2026-05-18)
 
