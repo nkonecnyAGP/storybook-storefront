@@ -28,6 +28,7 @@ import {
 import prisma from '../db/prisma';
 import { getAuthUser } from './auth';
 import { generateIllustration, listIllustrationVersions } from '../services/illustrations';
+import { parseAiJson } from '../services/parseAiJson';
 import { validate } from '../middleware/validate';
 
 const router = Router();
@@ -379,17 +380,10 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
         throw new Error('Unexpected response type from AI');
       }
 
-      let revised: { description: string; pages: { text: string; illustrationDescription: string }[] };
-      try {
-        revised = JSON.parse(firstBlock.text);
-      } catch {
-        const jsonMatch = firstBlock.text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          revised = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('Failed to parse revision from AI response');
-        }
-      }
+      const revised = parseAiJson(firstBlock.text) as {
+        description: string;
+        pages: { text: string; illustrationDescription: string }[];
+      };
 
       await prisma.bookVersion.create({
         data: {
